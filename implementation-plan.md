@@ -2658,7 +2658,7 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 | Phase 0: conventions/ADR | частково | `ComplexF` 8 bytes; FFT sign, PFB correction і absolute phase зафіксовані в ADR; FFTW provenance, Windows x64 matrix і native diagnostics документовані | Release owner ще має явно обрати GPL-compatible distribution, commercial FFTW license або no-bundle policy |
 | Phase 1: contracts/timing | готово | Повний resolved metadata для поточного scope, exact timing/counts, chunk alignment, warnings, numeric/hint validation, reset/discontinuity, stable order/opaque IDs/disposal tests | Реальні FIR delays мають надалі обчислюватися з filter metadata при заміні length-one fixtures |
 | Phase 2: FFTW | готово | Platform/export/version diagnostics; reusable aligned buffers; cached ref-counted plans; 1D/`plan_many`; in-place/out-of-place; wisdom; smooth lengths; stress, normalization/alignment/no-allocation tests; documented provenance/license policy | Multi-thread runtime, benchmark-selected `MEASURE` default і stronger SIMD alignment свідомо відкладені до відповідних data/gates |
-| Phase 3: scalar DSP | частково | Independent scalar DFT, residual rotator, PFB explicit correction та circular-shift reference | Kaiser designer, response evaluator, folded-alias evaluator, scalar spectral extractor module, fine/half-band decimator, general `P > 1` phase FIR reference |
+| Phase 3: scalar DSP | частково | Independent scalar DFT/rotator; normalized-cache Kaiser designer; dense complex і conservative folded-alias evaluators; scalar FIR, power-of-two decimator та standalone spectral extractor; PFB correction/shift references | General `P > 1` phase FIR reference лишається у Кроці 7; production cascaded half-band specialization і SIMD kernels відкладені до відповідних кроків/gates |
 | Phase 4: reference DDC | не почато | Лише deterministic tone helper у tests | Незалежний double-precision DDC, FIR, decimation, timing alignment, reusable deterministic signal generators |
 | Phase 5: SIMD foundation | відкладено | `SimdPreference` contract існує; forced AVX2/AVX-512 відхиляються | Увесь SIMD scope; не починати без окремого дозволу власника repository |
 | Phase 6: FDC MVP | частково | Один FFTW forward, spectral slice skeleton, batched short backward FFT, explicit `1/N`, channel routing, residual mixer | Реальний overlap-save (`HistorySize > 0`), anti-alias filter/window, discard history, multiple D groups, reusable extractor, planner candidates, independent DDC/signal acceptance |
@@ -2669,7 +2669,7 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 | Phase 11: selected-bin PFB | відкладено | Немає | Починати лише якщо full FFT benchmark показує потребу |
 | Phase 12: unified facade | частково | `ChannelizerFactory` exposes FDC/PFB through one API | Diagnostics, plan inspection completeness, reset/reconfiguration semantics, production examples |
 | Phase 13: Auto planner | відкладено | `Auto` явно throws `NotSupportedException` | Реалізувати лише після comparative benchmark profiles |
-| Signal tests | частково | 60 unit/integration tests: contracts, FFTW runtime/cache/wisdom/layouts, basic tones, K/H phase, continuity, allocation та SigMF generator | Independent DDC comparisons, blockers, chirps, noise, negative/wrap bins, alias sweeps, amplitude/phase drift, golden artifacts |
+| Signal tests | частково | 90 unit/integration tests: contracts, FFTW runtime/cache/wisdom/layouts, scalar filter design/response/folding/FIR/decimation/extraction, basic tones, K/H phase, continuity, allocation та SigMF generator | Independent DDC comparisons, blockers, chirps, noise, negative/wrap bins, full alias sweeps, amplitude/phase drift, golden artifacts |
 | Benchmarks | не почато | Третій project і console placeholder | BenchmarkDotNet dependency, FFTW/primitives/FDC/PFB/end-to-end suites, stored profiles and summary |
 | Diagnostics/docs | частково | README, ADR, versioned backend string, FFTW runtime/provenance/licensing document | Counters, stage timing, full production API example, acceptance report і фінальне release-license рішення |
 
@@ -2704,6 +2704,6 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 
 ### 17.4. Найближчий рекомендований інкремент
 
-Кроки 1 і 2 перевірені та завершені. Наступний implementation increment — **Крок 3** з [`implementation-steps.md`](implementation-steps.md), після нього **Крок 4**. Не переходити до повного FDC/PFB filter path, доки filter designer, folded evaluator та independent DDC не існують як окремі протестовані correctness modules.
+Кроки 1–3 перевірені та завершені. Наступний implementation increment — **Крок 4** з [`implementation-steps.md`](implementation-steps.md). Не переходити до повного FDC/PFB filter path, доки independent DDC не існує як окремий протестований correctness module.
 
 Крок 0 залишається окремим housekeeping завданням: потрібно створити acceptance owner/fixture map і малий manifest у `artifacts/signal-validation/`.

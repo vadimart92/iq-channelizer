@@ -16,11 +16,11 @@
 
 ## Остання перевірка
 
-- Дата: **2026-08-17**
-- Verified commit: `44d2372`
-- Tracker update: `uncommitted working tree` поверх `44d2372`
-- Release tests: **60 passed, 0 failed, 0 skipped**
-- Найближчий implementation step: **Крок 3 — scalar filter-design foundation**
+- Дата: **2026-08-18**
+- Verified baseline commit: `5b7492d`
+- Tracker update: `uncommitted Step 3 working tree` поверх `5b7492d`
+- Release tests: **90 passed, 0 failed, 0 skipped**
+- Найближчий implementation step: **Крок 4 — independent reference DDC і signal toolkit**
 - Окремий housekeeping blocker: **Крок 0** ще не виконано, бо немає acceptance owner/fixture map і `artifacts/signal-validation/README.md`
 
 ## Зведена таблиця
@@ -28,10 +28,10 @@
 | Крок | Статус | Evidence / примітка |
 | --- | --- | --- |
 | 0. Baseline та acceptance map | не виконано | Release baseline відтворюється, але manifest і owner/fixture mapping відсутні |
-| 1. Contracts, validation, timing | виконано | Commit `ced2747`; повторно перевірено на `44d2372`, 60/60 tests |
-| 2. FFTW runtime | виконано | Commit `3eb2c62`; повторно перевірено на `44d2372`, 60/60 tests |
-| 3. Scalar filter-design foundation | наступний | Не почато |
-| 4. Independent reference DDC/toolkit | не почато | Залежить від Кроку 3 |
+| 1. Contracts, validation, timing | виконано | Commit `ced2747`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
+| 2. FFTW runtime | виконано | Commit `3eb2c62`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
+| 3. Scalar filter-design foundation | виконано | Uncommitted working tree поверх `5b7492d`; 30 new tests, 90/90 total |
+| 4. Independent reference DDC/toolkit | наступний | Крок 3 завершено; implementation ще не почато |
 | 5. FDC overlap-save MVP | не почато | Не починати до Кроків 3–4 |
 | 6. FDC planner/multiple-D | не почато | Залежить від Кроку 5 |
 | 7. Generalized PFB algebra `P > 1` | не почато | Conservative prototype потребує Кроку 3 |
@@ -86,7 +86,7 @@
 
 ### Крок 3. Реалізувати scalar filter-design foundation
 
-**Статус: наступний.**
+**Статус: виконано.** Uncommitted working tree поверх `5b7492d`; 90/90 Release tests.
 
 - Додати `LowPassFilterSpec`, deterministic Kaiser-windowed sinc designer у `double`, normalized `float` taps і metadata.
 - Додати standalone complex frequency-response evaluator.
@@ -94,11 +94,15 @@
 - Додати scalar FIR, scalar fine power-of-two decimator і standalone scalar `SpectralSliceExtractor`.
 - Для кожного primitive додати tiny hand-checkable, edge, invalid-input і response tests.
 
-**Done:** Phase 3 primitives не залежать від FDC/PFB engine code і проходять заявлені ripple/attenuation checks на test specs.
+**Evidence:** `FilterDesign.cs`, `FrequencyResponseEvaluator.cs`, `AliasedResponseEvaluator.cs`, `ScalarFir.cs`, `ScalarPowerOfTwoDecimator.cs`, `SpectralSliceExtractor.cs`, `FilterDesignTests.cs`, `ScalarPrimitiveTests.cs`.
+
+**Design decisions:** Kaiser design виконується в `double`, нормалізує odd-length symmetric `float` taps, детерміновано refinement-ить attenuation і кешується за normalized spec. Folded evaluator сумує magnitudes усіх alias images без phase-cancellation assumption. Scalar FIR, decimator та extractor є span-based, не залежать від engines і не алокують у repeated calls.
+
+**Done підтверджено:** standalone ripple/attenuation пройдені для кількох specs; dense/folded response, tiny hand mappings, invalid/edge inputs і zero-allocation calls протестовані.
 
 ### Крок 4. Додати незалежний reference DDC і signal toolkit
 
-**Статус: не почато.**
+**Статус: наступний.**
 
 - Реалізувати double-precision input-rate NCO, FIR і decimator без reuse критичної FDC/PFB математики.
 - Додати deterministic generators: bin-centered/off-bin tones, two-tone, blocker, chirp, AM, seeded noise, impulse і zero input.

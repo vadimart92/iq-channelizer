@@ -6,3 +6,4 @@ artifacts/
 .dotnet-cli/
 *.user
 *.suo
+.pnpm-store

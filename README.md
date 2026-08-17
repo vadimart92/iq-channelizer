@@ -2,7 +2,7 @@
 
 Streaming complex-IQ channelization with interchangeable FDC and generalized PFB strategies.
 
-The current milestone provides the public request/plan/streaming contracts, deterministic planning, FFTW single-precision FDC, generalized batched `K/H` PFB with absolute frame correction, scalar reference transforms, and tests. It deliberately does not include SIMD, `Auto`, production filter design, or realtime claims.
+The current milestone provides the public request/plan/streaming contracts, deterministic planning, FFTW single-precision FDC, generalized batched `K/H` PFB with absolute frame correction, scalar reference transforms, and standalone Kaiser filter-design/response/folding primitives. The engines still use explicitly identified length-one filter fixtures; production filter integration, SIMD, `Auto`, and realtime claims are not included yet.
 
 The Windows x64 FFTW binary is copied beside consuming applications automatically. FFTW plans and aligned native buffers are created once with the engine and disposed with it; no planning occurs in `Process`.
 
