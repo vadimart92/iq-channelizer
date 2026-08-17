@@ -12,15 +12,17 @@ declare global {
 
 export class BlobSink implements ByteSink {
   readonly #filename: string;
+  readonly #mimeType: string;
   readonly #limit: number;
   readonly #parts: BlobPart[] = [];
   #bytes = 0;
 
-  constructor(filename: string, estimatedBytes: number, limit = DEFAULT_BLOB_LIMIT_BYTES) {
+  constructor(filename: string, estimatedBytes: number, mimeType = "application/octet-stream", limit = DEFAULT_BLOB_LIMIT_BYTES) {
     if (estimatedBytes > limit) {
       throw new Error(`Portable download is limited to ${Math.round(limit / 1024 ** 2)} MiB. Use a Chromium browser with file streaming or reduce the recording.`);
     }
     this.#filename = filename;
+    this.#mimeType = mimeType;
     this.#limit = limit;
   }
 
@@ -31,7 +33,7 @@ export class BlobSink implements ByteSink {
   }
 
   async close(): Promise<void> {
-    const url = URL.createObjectURL(new Blob(this.#parts, { type: "application/x-tar" }));
+    const url = URL.createObjectURL(new Blob(this.#parts, { type: this.#mimeType }));
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = this.#filename;
@@ -51,11 +53,16 @@ export class FileSystemSink implements ByteSink {
     this.#stream = stream;
   }
 
-  static async create(filename: string): Promise<FileSystemSink> {
+  static async create(
+    filename: string,
+    description: string,
+    mimeType: string,
+    extension: string,
+  ): Promise<FileSystemSink> {
     if (!window.showSaveFilePicker) throw new Error("Streaming file picker is unavailable.");
     const handle = await window.showSaveFilePicker({
       suggestedName: filename,
-      types: [{ description: "SigMF Archive", accept: { "application/x-tar": [".sigmf"] } }],
+      types: [{ description, accept: { [mimeType]: [extension] } }],
     });
     return new FileSystemSink(await handle.createWritable());
   }

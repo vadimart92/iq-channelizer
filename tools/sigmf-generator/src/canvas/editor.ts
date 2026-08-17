@@ -19,7 +19,7 @@ interface PlotRect {
   height: number;
 }
 
-type DragMode = "create" | "move" | "resize-start" | "resize-end" | "resize-high" | "resize-low" | "pan";
+type DragMode = "create" | "move" | "resize-start" | "resize-end" | "resize-high" | "resize-low" | "marquee" | "pan";
 
 interface DragState {
   mode: DragMode;
@@ -29,11 +29,18 @@ interface DragState {
   startSample: number;
   startFrequencyHz: number;
   original?: SignalBlock;
+  originals?: SignalBlock[];
+  initialSelection?: readonly string[];
+  additive?: boolean;
+  changed?: boolean;
 }
 
 export interface CanvasEditorCallbacks {
   onProjectChanged(): void;
-  onSelectionChanged(id: string | undefined): void;
+  onSelectionChanged(ids: readonly string[]): void;
+  onEditStarted(): void;
+  onEditCommitted(changed: boolean): void;
+  onContextMenu(x: number, y: number): void;
 }
 
 const palette = {
@@ -67,7 +74,7 @@ export class CanvasEditor {
   readonly viewport = new Viewport();
   #project: SignalProject;
   #tool: EditorTool = "select";
-  #selectedId: string | undefined;
+  #selectedIds = new Set<string>();
   #drag: DragState | undefined;
   #preview: SpectralPreview | undefined;
   #previewCanvas: HTMLCanvasElement | undefined;
@@ -88,16 +95,20 @@ export class CanvasEditor {
   }
 
   get selectedId(): string | undefined {
-    return this.#selectedId;
+    return this.#selectedIds.size === 1 ? this.#selectedIds.values().next().value as string : undefined;
+  }
+
+  get selectedIds(): readonly string[] {
+    return [...this.#selectedIds];
   }
 
   setProject(project: SignalProject, resetViewport = false): void {
     this.#project = project;
     if (resetViewport) this.viewport.reset(project);
     else this.viewport.clamp(project);
-    if (this.#selectedId && !project.signals.some((signal) => signal.id === this.#selectedId)) {
-      this.select(undefined);
-    }
+    const existing = new Set(project.signals.map((signal) => signal.id));
+    this.#selectedIds = new Set([...this.#selectedIds].filter((id) => existing.has(id)));
+    this.#callbacks.onSelectionChanged(this.selectedIds);
     this.invalidate();
   }
 
@@ -118,19 +129,29 @@ export class CanvasEditor {
     this.invalidate();
   }
 
-  select(id: string | undefined): void {
-    this.#selectedId = id;
-    this.#callbacks.onSelectionChanged(id);
+  select(id: string | undefined, additive = false): void {
+    if (!additive) this.#selectedIds.clear();
+    if (id) {
+      if (additive && this.#selectedIds.has(id)) this.#selectedIds.delete(id);
+      else this.#selectedIds.add(id);
+    }
+    this.#callbacks.onSelectionChanged(this.selectedIds);
+    this.invalidate();
+  }
+
+  selectMany(ids: readonly string[]): void {
+    this.#selectedIds = new Set(ids);
+    this.#callbacks.onSelectionChanged(this.selectedIds);
     this.invalidate();
   }
 
   deleteSelected(): void {
-    if (!this.#selectedId) return;
-    const index = this.#project.signals.findIndex((signal) => signal.id === this.#selectedId);
-    if (index < 0) return;
-    this.#project.signals.splice(index, 1);
+    if (this.#selectedIds.size === 0) return;
+    this.#callbacks.onEditStarted();
+    this.#project.signals = this.#project.signals.filter((signal) => !this.#selectedIds.has(signal.id));
     this.select(undefined);
     this.#callbacks.onProjectChanged();
+    this.#callbacks.onEditCommitted(true);
   }
 
   invalidate(): void {
@@ -174,7 +195,8 @@ export class CanvasEditor {
     this.#drawPreview(plot);
     this.#drawGrid(plot);
     for (const block of this.#project.signals) this.#drawBlock(block, plot);
-    if (this.#drag?.mode === "create") this.#drawCreationGhost();
+    if (this.#drag?.mode === "create" || this.#drag?.mode === "marquee") this.#drawDragBox();
+    this.#drawSelectionBounds(plot);
     ctx.strokeStyle = "#334155";
     ctx.strokeRect(plot.left + 0.5, plot.top + 0.5, plot.width - 1, plot.height - 1);
   }
@@ -242,7 +264,7 @@ export class CanvasEditor {
     const rect = this.#blockRect(block, plot);
     if (rect.right < plot.left || rect.left > plot.left + plot.width || rect.bottom < plot.top || rect.top > plot.top + plot.height) return;
     const ctx = this.#context;
-    const selected = block.id === this.#selectedId;
+    const selected = this.#selectedIds.has(block.id);
     ctx.save();
     ctx.beginPath();
     ctx.rect(plot.left, plot.top, plot.width, plot.height);
@@ -256,7 +278,7 @@ export class CanvasEditor {
     ctx.font = "600 11px Inter, system-ui, sans-serif";
     ctx.textAlign = "left";
     ctx.fillText(block.kind.toUpperCase(), rect.x + 6, Math.max(plot.top + 12, rect.y + 13));
-    if (selected) {
+    if (selected && this.#selectedIds.size === 1) {
       ctx.fillStyle = palette.selected;
       ctx.fillRect(rect.x - 3, rect.y + rect.height / 2 - 5, 6, 10);
       ctx.fillRect(rect.right - 3, rect.y + rect.height / 2 - 5, 6, 10);
@@ -268,19 +290,56 @@ export class CanvasEditor {
     ctx.restore();
   }
 
-  #drawCreationGhost(): void {
+  #drawSelectionBounds(plot: PlotRect): void {
+    const rects = this.#project.signals
+      .filter((block) => this.#selectedIds.has(block.id))
+      .map((block) => this.#blockRect(block, plot));
+    if (rects.length === 0) return;
+    const left = Math.min(...rects.map((rect) => rect.left)) - 5;
+    const top = Math.min(...rects.map((rect) => rect.top)) - 5;
+    const right = Math.max(...rects.map((rect) => rect.right)) + 5;
+    const bottom = Math.max(...rects.map((rect) => rect.bottom)) + 5;
+    const ctx = this.#context;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plot.left, plot.top, plot.width, plot.height);
+    ctx.clip();
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = "rgba(251, 191, 36, .92)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(left, top, right - left, bottom - top);
+    ctx.setLineDash([]);
+    const corner = 7;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(left, top + corner); ctx.lineTo(left, top); ctx.lineTo(left + corner, top);
+    ctx.moveTo(right - corner, top); ctx.lineTo(right, top); ctx.lineTo(right, top + corner);
+    ctx.moveTo(right, bottom - corner); ctx.lineTo(right, bottom); ctx.lineTo(right - corner, bottom);
+    ctx.moveTo(left + corner, bottom); ctx.lineTo(left, bottom); ctx.lineTo(left, bottom - corner);
+    ctx.stroke();
+    if (rects.length > 1) {
+      ctx.fillStyle = palette.selected;
+      ctx.font = "700 10px Inter, system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(`${rects.length} signals`, left + 4, Math.max(plot.top + 11, top - 5));
+    }
+    ctx.restore();
+  }
+
+  #drawDragBox(): void {
     const drag = this.#drag;
     if (!drag) return;
     const current = this.#lastPointer;
     if (!current) return;
     const left = Math.min(drag.startX, current.x);
     const right = Math.max(drag.startX, current.x);
-    const top = this.#tool === "tone" ? current.y - 7 : Math.min(drag.startY, current.y);
-    const bottom = this.#tool === "tone" ? current.y + 7 : Math.max(drag.startY, current.y);
+    const marquee = drag.mode === "marquee";
+    const top = !marquee && this.#tool === "tone" ? current.y - 7 : Math.min(drag.startY, current.y);
+    const bottom = !marquee && this.#tool === "tone" ? current.y + 7 : Math.max(drag.startY, current.y);
     this.#context.save();
     this.#context.setLineDash([6, 4]);
-    this.#context.strokeStyle = palette[this.#tool === "fm" ? "fm" : "tone"];
-    this.#context.fillStyle = "rgba(94, 234, 212, .12)";
+    this.#context.strokeStyle = marquee ? palette.selected : palette[this.#tool === "fm" ? "fm" : "tone"];
+    this.#context.fillStyle = marquee ? "rgba(251, 191, 36, .08)" : "rgba(94, 234, 212, .12)";
     this.#context.fillRect(left, top, right - left, bottom - top);
     this.#context.strokeRect(left, top, right - left, bottom - top);
     this.#context.restore();
@@ -307,7 +366,7 @@ export class CanvasEditor {
     return canvas;
   }
 
-  #eventPoint(event: PointerEvent | WheelEvent): { x: number; y: number } {
+  #eventPoint(event: MouseEvent): { x: number; y: number } {
     const bounds = this.#canvas.getBoundingClientRect();
     return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
   }
@@ -331,6 +390,7 @@ export class CanvasEditor {
     this.#canvas.addEventListener("pointerup", (event) => this.#pointerUp(event));
     this.#canvas.addEventListener("pointercancel", (event) => this.#pointerUp(event, true));
     this.#canvas.addEventListener("wheel", (event) => this.#wheel(event), { passive: false });
+    this.#canvas.addEventListener("contextmenu", (event) => this.#contextMenu(event));
     window.addEventListener("keydown", (event) => {
       if (event.code === "Space" && !(event.target instanceof HTMLInputElement)) {
         this.#spacePressed = true;
@@ -347,7 +407,16 @@ export class CanvasEditor {
     });
   }
 
+  #contextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    const point = this.#eventPoint(event);
+    const hit = this.#hitTest(point.x, point.y, this.#plotRect());
+    if (hit && !this.#selectedIds.has(hit.block.id)) this.select(hit.block.id);
+    if (this.#selectedIds.size > 0) this.#callbacks.onContextMenu(event.clientX, event.clientY);
+  }
+
   #pointerDown(event: PointerEvent): void {
+    if (event.button === 2) return;
     const point = this.#eventPoint(event);
     const plot = this.#plotRect();
     if (point.x < plot.left || point.x > plot.left + plot.width || point.y < plot.top || point.y > plot.top + plot.height) return;
@@ -355,21 +424,35 @@ export class CanvasEditor {
     const frequency = this.viewport.frequencyAt(point.y, plot.top, plot.height);
     let mode: DragMode;
     let original: SignalBlock | undefined;
+    let originals: SignalBlock[] | undefined;
+    const initialSelection = this.selectedIds;
+    const additive = event.ctrlKey || event.metaKey || event.shiftKey;
     if (event.button === 1 || this.#spacePressed) {
       mode = "pan";
     } else if (this.#tool === "select") {
       const hit = this.#hitTest(point.x, point.y, plot);
       if (!hit) {
-        this.select(undefined);
+        mode = "marquee";
+      } else if (event.ctrlKey || event.metaKey) {
+        this.select(hit.block.id, true);
         return;
+      } else {
+        if (!this.#selectedIds.has(hit.block.id)) this.select(hit.block.id);
+        mode = this.#selectedIds.size > 1 ? "move" : hit.mode;
+        original = structuredClone(hit.block);
+        originals = this.#project.signals
+          .filter((block) => this.#selectedIds.has(block.id))
+          .map((block) => structuredClone(block));
       }
-      this.select(hit.block.id);
-      mode = hit.mode;
-      original = structuredClone(hit.block);
     } else {
       mode = "create";
     }
-    this.#drag = { mode, pointerId: event.pointerId, startX: point.x, startY: point.y, startSample: sample, startFrequencyHz: frequency, original };
+    if (this.#isEditMode(mode)) this.#callbacks.onEditStarted();
+    this.#drag = {
+      mode, pointerId: event.pointerId, startX: point.x, startY: point.y,
+      startSample: sample, startFrequencyHz: frequency, original, originals,
+      initialSelection, additive, changed: false,
+    };
     this.#lastPointer = point;
     this.#canvas.setPointerCapture(event.pointerId);
     this.invalidate();
@@ -396,20 +479,37 @@ export class CanvasEditor {
       this.invalidate();
       return;
     }
-    if (drag.mode === "create" || !drag.original) {
+    if (drag.mode === "create" || drag.mode === "marquee") {
       this.invalidate();
       return;
     }
+    if (!drag.original) return;
     const block = this.#project.signals.find((candidate) => candidate.id === drag.original?.id);
     if (!block) return;
     const original = drag.original;
     if (drag.mode === "move") {
-      const deltaSamples = sample - Math.round(drag.startSample);
-      block.startSample = clamp(original.startSample + deltaSamples, 0, this.#project.totalSamples - original.sampleCount);
-      const deltaFrequency = frequency - drag.startFrequencyHz;
-      const [low, high] = frequencyBounds(original);
+      const originals = drag.originals ?? [original];
+      const minimumStart = Math.min(...originals.map((item) => item.startSample));
+      const maximumEnd = Math.max(...originals.map((item) => blockEndSample(item)));
+      const deltaSamples = clamp(
+        sample - Math.round(drag.startSample),
+        -minimumStart,
+        this.#project.totalSamples - maximumEnd,
+      );
+      const lows = originals.map((item) => frequencyBounds(item)[0]);
+      const highs = originals.map((item) => frequencyBounds(item)[1]);
       const nyquist = this.#project.sampleRateHz / 2;
-      block.centerFrequencyHz = original.centerFrequencyHz + clamp(deltaFrequency, -nyquist - low, nyquist - high - frequencyEpsilon(this.#project.sampleRateHz));
+      const deltaFrequency = clamp(
+        frequency - drag.startFrequencyHz,
+        -nyquist - Math.min(...lows),
+        nyquist - Math.max(...highs) - frequencyEpsilon(this.#project.sampleRateHz),
+      );
+      for (const originalItem of originals) {
+        const current = this.#project.signals.find((item) => item.id === originalItem.id);
+        if (!current) continue;
+        current.startSample = originalItem.startSample + deltaSamples;
+        current.centerFrequencyHz = originalItem.centerFrequencyHz + deltaFrequency;
+      }
     } else if (drag.mode === "resize-start") {
       const end = blockEndSample(original);
       block.startSample = clamp(sample, 0, end - 1);
@@ -423,6 +523,7 @@ export class CanvasEditor {
     } else if (block.kind === "fm" && original.kind === "fm") {
       this.#resizeFm(block, original, frequency, drag.mode);
     }
+    drag.changed = true;
     this.#callbacks.onProjectChanged();
     this.invalidate();
   }
@@ -447,10 +548,31 @@ export class CanvasEditor {
       return;
     }
     if (drag.mode === "create") this.#commitCreation(event, drag);
+    else if (drag.mode === "marquee") this.#commitMarquee(event, drag);
+    if (this.#isEditMode(drag.mode)) this.#callbacks.onEditCommitted(Boolean(drag.changed));
     this.#drag = undefined;
     this.#lastPointer = undefined;
     this.#canvas.releasePointerCapture(event.pointerId);
     this.invalidate();
+  }
+
+  #commitMarquee(event: PointerEvent, drag: DragState): void {
+    const point = this.#eventPoint(event);
+    const plot = this.#plotRect();
+    const left = Math.min(drag.startX, point.x);
+    const right = Math.max(drag.startX, point.x);
+    const top = Math.min(drag.startY, point.y);
+    const bottom = Math.max(drag.startY, point.y);
+    if (right - left < 3 && bottom - top < 3) {
+      this.selectMany(drag.additive ? drag.initialSelection ?? [] : []);
+      return;
+    }
+    const matches = this.#project.signals.filter((block) => {
+      const rect = this.#blockRect(block, plot);
+      return rect.right >= left && rect.left <= right && rect.bottom >= top && rect.top <= bottom;
+    }).map((block) => block.id);
+    const ids = drag.additive ? [...new Set([...(drag.initialSelection ?? []), ...matches])] : matches;
+    this.selectMany(ids);
   }
 
   #commitCreation(event: PointerEvent, drag: DragState): void {
@@ -480,18 +602,27 @@ export class CanvasEditor {
     }
     this.#project.signals.push(block);
     this.select(block.id);
+    drag.changed = true;
     this.#callbacks.onProjectChanged();
   }
 
   #cancelDrag(): void {
-    if (this.#drag?.original) {
-      const index = this.#project.signals.findIndex((signal) => signal.id === this.#drag?.original?.id);
-      if (index >= 0) this.#project.signals[index] = this.#drag.original;
+    const drag = this.#drag;
+    if (drag?.originals) {
+      for (const original of drag.originals) {
+        const index = this.#project.signals.findIndex((signal) => signal.id === original.id);
+        if (index >= 0) this.#project.signals[index] = original;
+      }
       this.#callbacks.onProjectChanged();
     }
+    if (drag && this.#isEditMode(drag.mode)) this.#callbacks.onEditCommitted(false);
     this.#drag = undefined;
     this.#lastPointer = undefined;
     this.invalidate();
+  }
+
+  #isEditMode(mode: DragMode): boolean {
+    return mode !== "pan" && mode !== "marquee";
   }
 
   #wheel(event: WheelEvent): void {

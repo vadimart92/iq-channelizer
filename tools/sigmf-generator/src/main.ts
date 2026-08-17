@@ -1,6 +1,7 @@
 import "./styles.css";
 
-import { exportRecording, type ExportSession } from "./app/exporter";
+import { exportRecording, exportWave, type ExportSession } from "./app/exporter";
+import { History } from "./app/history";
 import { downloadText, parseProject, serializeProject } from "./app/project-io";
 import { requestSpectralPreview, type PreviewSession } from "./app/spectral-preview";
 import { hasErrors, validateProject, type ValidationIssue } from "./app/validation";
@@ -13,7 +14,17 @@ import {
   occupiedBandwidthHz,
   totalDataBytes,
   type SignalBlock,
+  type SignalProject,
 } from "./model/project";
+import { validateWavProject } from "./wav/writer";
+
+type ExportFormat = "sigmf" | "wav";
+type SampleRateUnit = 1 | 1_000 | 1_000_000;
+
+interface EditorSnapshot {
+  project: SignalProject;
+  selectedIds: string[];
+}
 
 function element<T extends HTMLElement>(id: string): T {
   const value = document.getElementById(id);
@@ -23,6 +34,10 @@ function element<T extends HTMLElement>(id: string): T {
 
 function input(id: string): HTMLInputElement {
   return element<HTMLInputElement>(id);
+}
+
+function select(id: string): HTMLSelectElement {
+  return element<HTMLSelectElement>(id);
 }
 
 function formatBytes(bytes: number): string {
@@ -44,21 +59,33 @@ function radians(degreesValue: number): number {
   return degreesValue * Math.PI / 180;
 }
 
+function preferredSampleRateUnit(sampleRateHz: number): SampleRateUnit {
+  if (sampleRateHz >= 1_000_000) return 1_000_000;
+  if (sampleRateHz >= 1_000) return 1_000;
+  return 1;
+}
+
 let project = createDefaultProject();
+let sampleRateUnit: SampleRateUnit = 1_000_000;
 let exportSession: ExportSession | undefined;
 let previewSession: PreviewSession | undefined;
 let previewTimer: number | undefined;
 let exporting = false;
 
+const history = new History<EditorSnapshot>(
+  (left, right) => JSON.stringify(left) === JSON.stringify(right),
+);
 const canvas = element<HTMLCanvasElement>("signal-canvas");
 const signalForm = element<HTMLFormElement>("signal-form");
 const emptyInspector = element<HTMLDivElement>("empty-inspector");
 const fmFields = element<HTMLDivElement>("fm-fields");
-const downloadButton = element<HTMLButtonElement>("download");
+const sigMfButton = element<HTMLButtonElement>("download");
+const wavButton = element<HTMLButtonElement>("download-wav");
 const cancelButton = element<HTMLButtonElement>("cancel-export");
 const progressWrap = element<HTMLDivElement>("progress-wrap");
 const progressBar = element<HTMLSpanElement>("progress-bar");
 const progressLabel = element<HTMLSpanElement>("progress-label");
+const contextMenu = element<HTMLDivElement>("canvas-context-menu");
 
 const editor = new CanvasEditor(canvas, project, {
   onProjectChanged(): void {
@@ -68,8 +95,65 @@ const editor = new CanvasEditor(canvas, project, {
   },
   onSelectionChanged(): void {
     renderInspector();
+    renderHistoryButtons();
+  },
+  onEditStarted(): void {
+    beginHistoryTransaction();
+  },
+  onEditCommitted(changed): void {
+    if (changed) commitHistoryTransaction();
+    else cancelHistoryTransaction();
+  },
+  onContextMenu(x, y): void {
+    showContextMenu(x, y);
   },
 });
+
+function currentSnapshot(): EditorSnapshot {
+  return { project: cloneProject(project), selectedIds: [...editor.selectedIds] };
+}
+
+function beginHistoryTransaction(): void {
+  history.begin(currentSnapshot());
+  renderHistoryButtons();
+}
+
+function commitHistoryTransaction(): void {
+  history.commit(currentSnapshot());
+  renderHistoryButtons();
+}
+
+function cancelHistoryTransaction(): void {
+  history.cancel();
+  renderHistoryButtons();
+}
+
+function restoreSnapshot(snapshot: EditorSnapshot): void {
+  project = cloneProject(snapshot.project);
+  editor.setProject(project);
+  editor.selectMany(snapshot.selectedIds.filter((id) => project.signals.some((signal) => signal.id === id)));
+  renderTopFields();
+  renderProjectState();
+  renderInspector();
+  schedulePreview();
+}
+
+function undo(): void {
+  const snapshot = history.undo(currentSnapshot());
+  if (snapshot) restoreSnapshot(snapshot);
+  renderHistoryButtons();
+}
+
+function redo(): void {
+  const snapshot = history.redo(currentSnapshot());
+  if (snapshot) restoreSnapshot(snapshot);
+  renderHistoryButtons();
+}
+
+function renderHistoryButtons(): void {
+  element<HTMLButtonElement>("undo").disabled = !history.canUndo;
+  element<HTMLButtonElement>("redo").disabled = !history.canRedo;
+}
 
 function selectedBlock(): SignalBlock | undefined {
   return project.signals.find((signal) => signal.id === editor.selectedId);
@@ -85,33 +169,54 @@ function issueSummary(issues: readonly ValidationIssue[]): string {
   return issues.slice(0, 3).map((issue) => issue.message).join(" ");
 }
 
-function renderProjectState(): void {
+function renderProjectState(preserveStatus = false): void {
   element("sample-summary").textContent = `${project.totalSamples.toLocaleString()} samples`;
   element("size-summary").textContent = formatBytes(totalDataBytes(project));
   const issues = validateProject(project);
-  downloadButton.disabled = exporting || hasErrors(issues);
-  if (exporting) return;
+  const invalid = hasErrors(issues);
+  const wavErrors = validateWavProject(project);
+  sigMfButton.disabled = exporting || invalid;
+  wavButton.disabled = exporting || invalid || wavErrors.length > 0;
+  wavButton.title = wavErrors.join(" ");
+  renderHistoryButtons();
+  if (exporting || preserveStatus) return;
   const errors = issues.filter((issue) => issue.severity === "error");
   const warnings = issues.filter((issue) => issue.severity === "warning");
   if (errors.length > 0) setStatus(`${errors.length} validation error${errors.length === 1 ? "" : "s"}`, issueSummary(errors), "error");
   else if (warnings.length > 0) setStatus(`${warnings.length} warning${warnings.length === 1 ? "" : "s"}`, issueSummary(warnings), "warning");
   else if (project.signals.length === 0) setStatus("Ready", "Empty canvas will export zero IQ.");
-  else setStatus("Ready to export", `${project.signals.length} signal block${project.signals.length === 1 ? "" : "s"} · cf32_le · SigMF 1.2.6`);
+  else setStatus("Ready to export", `${project.signals.length} signal block${project.signals.length === 1 ? "" : "s"} · SigMF cf32_le or stereo float32 WAV`);
   editor.invalidate();
 }
 
-function renderTopFields(): void {
+function renderSampleRateField(): void {
+  select("sample-rate-unit").value = String(sampleRateUnit);
+  input("sample-rate").value = String(project.sampleRateHz / sampleRateUnit);
+  input("sample-rate").step = sampleRateUnit === 1_000_000 ? "0.001" : "1";
+}
+
+function renderTopFields(chooseUnit = false): void {
+  if (chooseUnit) sampleRateUnit = preferredSampleRateUnit(project.sampleRateHz);
   input("basename").value = project.basename;
-  input("sample-rate").value = String(project.sampleRateHz);
+  renderSampleRateField();
   input("duration").value = String(durationSeconds(project));
   input("rf-center").value = project.rfCenterHz === undefined ? "" : String(project.rfCenterHz);
 }
 
 function renderInspector(): void {
   const block = selectedBlock();
+  const selectedCount = editor.selectedIds.length;
   signalForm.hidden = !block;
   emptyInspector.hidden = Boolean(block);
-  element("selection-kind").textContent = block ? `${block.kind.toUpperCase()} · ${block.id.slice(0, 8)}` : "No selection";
+  if (selectedCount > 1) {
+    element("selection-kind").textContent = `${selectedCount} SIGNALS`;
+    element("empty-inspector-text").textContent = "Drag any selected block to move the group, or right-click to delete the selection.";
+  } else if (!block) {
+    element("selection-kind").textContent = "No selection";
+    element("empty-inspector-text").textContent = "Drag a selection box, or draw a Tone or FM block and select it to edit exact values.";
+  } else {
+    element("selection-kind").textContent = `${block.kind.toUpperCase()} · ${block.id.slice(0, 8)}`;
+  }
   if (!block) return;
   input("signal-start").value = String(block.startSample / project.sampleRateHz);
   input("signal-duration").value = String(block.sampleCount / project.sampleRateHz);
@@ -160,14 +265,14 @@ function schedulePreview(): void {
 
 function rescaleForSampleRate(nextRate: number): void {
   if (!Number.isFinite(nextRate) || nextRate <= 0 || nextRate > 1e12) {
-    input("sample-rate").value = String(project.sampleRateHz);
+    renderSampleRateField();
     setStatus("Invalid sample rate", "Enter a finite value greater than zero and no more than 1e12 Hz.", "error");
     return;
   }
   const previousRate = project.sampleRateHz;
   if (nextRate === previousRate) return;
   if (project.signals.length > 0 && !window.confirm("Change sample rate and preserve each block's physical time and frequency?")) {
-    input("sample-rate").value = String(previousRate);
+    renderSampleRateField();
     return;
   }
   const duration = Number(input("duration").value);
@@ -230,50 +335,90 @@ function setTool(tool: EditorTool): void {
   document.querySelectorAll<HTMLButtonElement>("[data-tool]").forEach((button) => button.classList.toggle("active", button.dataset.tool === tool));
 }
 
-async function startExport(): Promise<void> {
+function showContextMenu(x: number, y: number): void {
+  if (editor.selectedIds.length === 0) {
+    contextMenu.hidden = true;
+    return;
+  }
+  element("context-delete-label").textContent = `Delete ${editor.selectedIds.length === 1 ? "signal" : `${editor.selectedIds.length} signals`}`;
+  contextMenu.hidden = false;
+  const width = 220;
+  const height = 48;
+  contextMenu.style.left = `${Math.min(x, window.innerWidth - width - 8)}px`;
+  contextMenu.style.top = `${Math.min(y, window.innerHeight - height - 8)}px`;
+}
+
+async function startExport(format: ExportFormat): Promise<void> {
   const issues = validateProject(project);
-  if (hasErrors(issues) || exporting) return;
+  const wavErrors = format === "wav" ? validateWavProject(project) : [];
+  if (hasErrors(issues) || wavErrors.length > 0 || exporting) {
+    if (wavErrors.length > 0) setStatus("WAV export unavailable", wavErrors.join(" "), "error");
+    return;
+  }
   exporting = true;
   previewSession?.cancel();
-  downloadButton.disabled = true;
+  sigMfButton.disabled = true;
+  wavButton.disabled = true;
   cancelButton.hidden = false;
   progressWrap.hidden = false;
   progressBar.style.width = "0%";
   progressLabel.textContent = "0%";
-  setStatus("Generating recording", "Writing interleaved cf32_le samples…");
-  const session = exportRecording(cloneProject(project), {
-    onProgress(progress, masterGain): void {
+  const extension = format === "wav" ? "wav" : "sigmf";
+  setStatus(`Generating ${extension.toUpperCase()}`, format === "wav" ? "Writing stereo float32 I/Q samples…" : "Writing interleaved cf32_le samples…");
+  const callbacks = {
+    onProgress(progress: number, masterGain: number): void {
       const percentage = Math.round(progress * 100);
       progressBar.style.width = `${percentage}%`;
       progressLabel.textContent = `${percentage}%`;
       element("status-detail").textContent = `Master gain ${masterGain.toFixed(6)} · ${Math.round(progress * project.totalSamples).toLocaleString()} / ${project.totalSamples.toLocaleString()} samples`;
     },
-  });
+  };
+  const session = format === "wav"
+    ? exportWave(cloneProject(project), callbacks)
+    : exportRecording(cloneProject(project), callbacks);
   exportSession = session;
   try {
     const gain = await session.result;
-    setStatus("Export complete", `${project.basename}.sigmf · master gain ${gain.toFixed(6)}`);
+    setStatus("Export complete", `${project.basename}.${extension} · master gain ${gain.toFixed(6)}`);
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") setStatus("Export cancelled", "No completed archive was written.", "warning");
+    if (error instanceof DOMException && error.name === "AbortError") setStatus("Export cancelled", "No completed file was written.", "warning");
     else setStatus("Export failed", error instanceof Error ? error.message : String(error), "error");
   } finally {
     exporting = false;
     exportSession = undefined;
     cancelButton.hidden = true;
     progressWrap.hidden = true;
-    renderProjectState();
+    renderProjectState(true);
     schedulePreview();
   }
+}
+
+function bindHistoryInputs(): void {
+  const selectors = [
+    "#basename", "#sample-rate", "#duration", "#rf-center",
+    "#signal-form input",
+  ].join(",");
+  document.querySelectorAll<HTMLInputElement>(selectors).forEach((control) => {
+    control.addEventListener("focus", () => beginHistoryTransaction());
+    control.addEventListener("blur", () => commitHistoryTransaction());
+  });
 }
 
 document.querySelectorAll<HTMLButtonElement>("[data-tool]").forEach((button) => {
   button.addEventListener("click", () => setTool((button.dataset.tool ?? "select") as EditorTool));
 });
+element("undo").addEventListener("click", () => undo());
+element("redo").addEventListener("click", () => redo());
 element("reset-view").addEventListener("click", () => editor.resetViewport());
 element("delete-signal").addEventListener("click", () => editor.deleteSelected());
 element("inspector-delete").addEventListener("click", () => editor.deleteSelected());
+element("context-delete").addEventListener("click", () => { contextMenu.hidden = true; editor.deleteSelected(); });
 input("basename").addEventListener("input", () => { project.basename = input("basename").value; renderProjectState(); });
-input("sample-rate").addEventListener("change", () => rescaleForSampleRate(Number(input("sample-rate").value)));
+input("sample-rate").addEventListener("change", () => rescaleForSampleRate(Number(input("sample-rate").value) * sampleRateUnit));
+select("sample-rate-unit").addEventListener("change", () => {
+  sampleRateUnit = Number(select("sample-rate-unit").value) as SampleRateUnit;
+  renderSampleRateField();
+});
 input("duration").addEventListener("change", () => changeDuration(Number(input("duration").value)));
 input("rf-center").addEventListener("input", () => {
   const value = input("rf-center").value.trim();
@@ -287,30 +432,53 @@ element("load-project").addEventListener("click", () => input("project-file").cl
 input("project-file").addEventListener("change", async () => {
   const file = input("project-file").files?.[0];
   if (!file) return;
+  beginHistoryTransaction();
   try {
     project = parseProject(await file.text());
+    sampleRateUnit = preferredSampleRateUnit(project.sampleRateHz);
     editor.setProject(project, true);
+    editor.select(undefined);
     renderTopFields();
     renderProjectState();
     renderInspector();
     schedulePreview();
+    commitHistoryTransaction();
   } catch (error) {
+    cancelHistoryTransaction();
     setStatus("Project load failed", error instanceof Error ? error.message : String(error), "error");
   } finally {
     input("project-file").value = "";
   }
 });
-downloadButton.addEventListener("click", () => void startExport());
+sigMfButton.addEventListener("click", () => void startExport("sigmf"));
+wavButton.addEventListener("click", () => void startExport("wav"));
 cancelButton.addEventListener("click", () => exportSession?.cancel());
+document.addEventListener("pointerdown", (event) => {
+  if (!contextMenu.contains(event.target as Node)) contextMenu.hidden = true;
+});
 window.addEventListener("keydown", (event) => {
-  if (event.target instanceof HTMLInputElement) return;
+  const modifier = event.ctrlKey || event.metaKey;
+  if (modifier && event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    if (event.shiftKey) redo();
+    else undo();
+    return;
+  }
+  if (modifier && event.key.toLowerCase() === "y") {
+    event.preventDefault();
+    redo();
+    return;
+  }
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement) return;
   if (event.key.toLowerCase() === "v") setTool("select");
   if (event.key.toLowerCase() === "t") setTool("tone");
   if (event.key.toLowerCase() === "f") setTool("fm");
 });
 
 bindInspector();
+bindHistoryInputs();
 renderTopFields();
 renderProjectState();
 renderInspector();
+renderHistoryButtons();
 setTool("select");

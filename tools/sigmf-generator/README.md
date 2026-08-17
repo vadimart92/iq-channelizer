@@ -25,11 +25,11 @@ pnpm test
 
 ## Workflow
 
-1. Set filename, sample rate, duration and optional RF center frequency.
+1. Set filename, sample rate in Hz/kHz/MHz, duration and optional RF center frequency.
 2. Select **Tone** or **FM** and drag on the canvas.
 3. Return to **Select** to move/resize blocks or edit exact values in the inspector.
 4. Keep **Computed spectral preview** enabled to compare the actual coarse STFT with the design blocks.
-5. Download `basename.sigmf`.
+5. Download `basename.sigmf` or a stereo float32 `basename.wav`.
 
 The archive is an uncompressed POSIX ustar file containing:
 
@@ -40,6 +40,8 @@ basename.sigmf-meta  # UTF-8 SigMF metadata
 
 Chromium-based browsers in a secure context use streaming file output. Other browsers use a Blob fallback with a 512 MiB memory guard.
 
+WAV export uses `WAVE_FORMAT_IEEE_FLOAT`, 32 bits, two channels: `I = left`, `Q = right`. It has the same interleaved sample payload as `cf32_le`, preceded by a canonical 44-byte RIFF/WAVE header.
+
 ## Canvas controls
 
 - wheel: zoom time around the cursor;
@@ -47,7 +49,12 @@ Chromium-based browsers in a secure context use streaming file output. Other bro
 - `Shift + wheel`: pan time;
 - middle drag or `Space + drag`: pan both axes;
 - `V`, `T`, `F`: Select, Tone, FM;
-- Delete/Backspace: remove the selected signal;
+- drag empty canvas in Select mode: marquee/multi-selection;
+- `Ctrl/Cmd + click`: toggle one signal in the selection;
+- drag any selected signal: move the complete multi-selection;
+- `Ctrl/Cmd + Z`: undo; `Ctrl/Cmd + Shift + Z` or `Ctrl/Cmd + Y`: redo;
+- right-click a signal or selection: context menu;
+- Delete/Backspace: remove the selected signal(s);
 - Escape: cancel the current drag.
 
 Time is persisted as integer sample indices. The vertical axis is always baseband offset; when RF center is set, SigMF annotation edges are exported as absolute RF frequencies.
@@ -82,6 +89,7 @@ FM block height represents Carson's estimated occupied bandwidth, `2 * (deviatio
 - `cf32_le` only;
 - Tone and single-tone FM only;
 - raw dataset at most `8 GiB - 1 byte` for the simple ustar writer;
+- classic WAV sample payload at most approximately 4 GiB; WAV sample rate must be an integer;
 - Blob fallback at most 512 MiB;
 - coarse preview is intentionally bounded and is not a full-resolution spectrogram;
 - SHA-512 is not emitted because `core:sha512` is optional and portable streaming digest is outside this MVP.
