@@ -2641,7 +2641,7 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 
 ## 17. Поточний стан і execution checklist для sub-агента
 
-Цей розділ є аудитом repository станом на **2026-08-17**, commit `5ed6954`, і робочою чергою для наступного sub-агента. Він не змінює вимоги розділів 1–16. Якщо короткий checklist нижче конфліктує з математичним або API contract вище, пріоритет мають основні розділи плану.
+Цей розділ є аудитом repository станом на **2026-08-17**, перевіреним на commit `44d2372`. Він не змінює вимоги розділів 1–16. Операційна черга винесена в [`implementation-steps.md`](implementation-steps.md); якщо tracker конфліктує з математичним або API contract цього документа, пріоритет мають розділи 1–16.
 
 ### 17.1. Звірка поточної реалізації з планом
 
@@ -2655,9 +2655,9 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 | Область | Статус | Що вже є | Що відсутнє до вимог плану |
 | --- | --- | --- | --- |
 | Solution structure | готово | Рівно три `.csproj`: library, tests, benchmarks; `net10.0` | Не створювати додаткові projects надалі |
-| Phase 0: conventions/ADR | частково | `ComplexF` 8 bytes; FFT sign, PFB correction і absolute phase зафіксовані в ADR | FFTW distribution/license decision, supported OS/CPU matrix, explicit native dependency diagnostics |
-| Phase 1: contracts/timing | частково | Request types, `InputRequirements`, resolved plan skeleton, sink, exact input length, continuity, stable request order | Повний resolved metadata, actual filter/group delay, chunk alignment, warning/rejection details, reset/discontinuity API tests, повна validation усіх numeric fields |
-| Phase 2: FFTW | частково | x64 `libfftw3f-3.dll`; `fftwf_malloc/free`; 1D and `plan_many` C2C; `FFTW_ESTIMATE`; disposal; scalar equivalence, normalization, alignment і no-allocation tests | Plan cache, wisdom, threads, smooth-length coverage, in-place option, measured planning policy, version/platform reporting, 64-byte alignment strategy if required by later kernels |
+| Phase 0: conventions/ADR | частково | `ComplexF` 8 bytes; FFT sign, PFB correction і absolute phase зафіксовані в ADR; FFTW provenance, Windows x64 matrix і native diagnostics документовані | Release owner ще має явно обрати GPL-compatible distribution, commercial FFTW license або no-bundle policy |
+| Phase 1: contracts/timing | готово | Повний resolved metadata для поточного scope, exact timing/counts, chunk alignment, warnings, numeric/hint validation, reset/discontinuity, stable order/opaque IDs/disposal tests | Реальні FIR delays мають надалі обчислюватися з filter metadata при заміні length-one fixtures |
+| Phase 2: FFTW | готово | Platform/export/version diagnostics; reusable aligned buffers; cached ref-counted plans; 1D/`plan_many`; in-place/out-of-place; wisdom; smooth lengths; stress, normalization/alignment/no-allocation tests; documented provenance/license policy | Multi-thread runtime, benchmark-selected `MEASURE` default і stronger SIMD alignment свідомо відкладені до відповідних data/gates |
 | Phase 3: scalar DSP | частково | Independent scalar DFT, residual rotator, PFB explicit correction та circular-shift reference | Kaiser designer, response evaluator, folded-alias evaluator, scalar spectral extractor module, fine/half-band decimator, general `P > 1` phase FIR reference |
 | Phase 4: reference DDC | не почато | Лише deterministic tone helper у tests | Незалежний double-precision DDC, FIR, decimation, timing alignment, reusable deterministic signal generators |
 | Phase 5: SIMD foundation | відкладено | `SimdPreference` contract існує; forced AVX2/AVX-512 відхиляються | Увесь SIMD scope; не починати без окремого дозволу власника repository |
@@ -2669,16 +2669,16 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 | Phase 11: selected-bin PFB | відкладено | Немає | Починати лише якщо full FFT benchmark показує потребу |
 | Phase 12: unified facade | частково | `ChannelizerFactory` exposes FDC/PFB through one API | Diagnostics, plan inspection completeness, reset/reconfiguration semantics, production examples |
 | Phase 13: Auto planner | відкладено | `Auto` явно throws `NotSupportedException` | Реалізувати лише після comparative benchmark profiles |
-| Signal tests | частково | 25 unit/integration tests: contracts, FFTW, basic tones, K/H phase, continuity, allocation | Independent DDC comparisons, blockers, chirps, noise, negative/wrap bins, alias sweeps, amplitude/phase drift, golden artifacts |
+| Signal tests | частково | 60 unit/integration tests: contracts, FFTW runtime/cache/wisdom/layouts, basic tones, K/H phase, continuity, allocation та SigMF generator | Independent DDC comparisons, blockers, chirps, noise, negative/wrap bins, alias sweeps, amplitude/phase drift, golden artifacts |
 | Benchmarks | не почато | Третій project і console placeholder | BenchmarkDotNet dependency, FFTW/primitives/FDC/PFB/end-to-end suites, stored profiles and summary |
-| Diagnostics/docs | частково | README, one ADR, backend string in resolved plan | Counters, stage timing, licensing/distribution doc, full API example with timing metadata, acceptance report |
+| Diagnostics/docs | частково | README, ADR, versioned backend string, FFTW runtime/provenance/licensing document | Counters, stage timing, full production API example, acceptance report і фінальне release-license рішення |
 
 Поточні важливі обмеження, які не можна помилково вважати production behavior:
 
 1. FDC має `HistorySize = 0`; це ще не overlap-save implementation.
 2. FDC spectral extraction не застосовує anti-alias window/filter.
 3. PFB prototype має лише `P = 1` і taps `1/K`; це algebra fixture, а не production filter.
-4. `GroupDelayInputSamples` зараз завжди `0/1`, тому timing metadata не відображає реальний FIR.
+4. `GroupDelayInputSamples` зараз `0/1`, бо обидва поточні filter fixtures мають length one; при додаванні реальних FIR metadata мусить оновлюватися з їх довжини/фази.
 5. PFB і FDC використовують managed staging arrays навколо FFTW; wrapper копіює їх у/з native buffers.
 6. PFB не має fine filtering/decimation, а channels із однаковим bin ще не мають окремого precomputed unique-bin router.
 7. Default planner values є тимчасовими, а не benchmark-backed policy.
@@ -2696,151 +2696,14 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 8. Не реалізовувати `Auto`, selected-bin DFT, FoldAware acceptance або performance heuristics без відповідних benchmark/signal data.
 9. Не підміняти відсутню PFB frame correction residual oscillator-ом і не змінювати FFT sign/bin order без tiny scalar proof.
 10. Кожен завершений крок повинен залишати zero-allocation steady-state tests зеленими або документувати, чому конкретний тест ще не застосовний до initialization-only коду.
+11. Після **кожного** інкременту обов’язково актуалізувати [`implementation-steps.md`](implementation-steps.md): статус кроку, evidence, verified commit/working tree, кількість Release tests і наступний рекомендований крок. Не завершувати інкремент із застарілим tracker.
 
-### 17.3. Послідовність наступних кроків
+### 17.3. Execution steps і статус
 
-#### Крок 0. Зафіксувати baseline та acceptance map
-
-- Запустити Release tests і записати кількість passed tests у робочий звіт.
-- Зіставити кожен новий test fixture з конкретним acceptance criterion розділів 6–10.
-- Додати короткий `artifacts/signal-validation/README.md` або інший малий manifest, але не комітити великі raw IQ artifacts.
-
-**Done:** baseline відтворюється на чистій checkout з bundled FFTW DLL; список acceptance tests має owner/fixture mapping.
-
-#### Крок 1. Завершити contracts, validation і timing metadata
-
-- Розширити `ResolvedChannelizerPlan` та `ResolvedChannelPlan` полями з розділу 4.3 без per-callback metadata.
-- Валідовувати attenuation, ripple, minimum/preferred output rates, overflow, finite values і всі forced hints.
-- Визначити та протестувати reset/discontinuity semantics; якщо public `Reset` додається, узгодити interface і README.
-- Додати tests для original channel ordering, exact one-write-per-channel, opaque IDs, deterministic output count і disposed engine.
-
-**Done:** pure contract tests повністю покривають Phase 1; timing fields більше не є безумовними placeholders.
-
-#### Крок 2. Завершити базовий FFTW runtime module
-
-- Додати зрозумілу platform/architecture/dependency validation для bundled Windows x64 DLL.
-- Винести native buffers у reusable ownership abstraction; перевірити потрібне alignment runtime assertions.
-- Додати plan cache/ownership policy, `plan_many` layout tests для різних lengths/batches, smooth composite lengths і repeated create/dispose stress test.
-- Додати wisdom/threading API лише після визначення policy; planning залишається поза `Process`.
-- Документувати FFTW build/version, distribution source і license obligations.
-
-**Done:** Phase 2 tests зелені, native failure diagnostics actionable, repeated execute має zero managed allocations.
-
-#### Крок 3. Реалізувати scalar filter-design foundation
-
-- Додати `LowPassFilterSpec`, deterministic Kaiser-windowed sinc designer у `double`, normalized `float` taps і metadata.
-- Додати standalone complex frequency-response evaluator.
-- Додати conservative `AliasedResponseEvaluator` для decimation/hop folding.
-- Додати scalar FIR, scalar fine power-of-two decimator і standalone scalar `SpectralSliceExtractor`.
-- Для кожного primitive додати tiny hand-checkable, edge, invalid-input і response tests.
-
-**Done:** Phase 3 primitives не залежать від FDC/PFB engine code і проходять заявлені ripple/attenuation checks на тестових specs.
-
-#### Крок 4. Додати незалежний reference DDC і signal toolkit
-
-- Реалізувати double-precision input-rate NCO, FIR і decimator без reuse критичної FDC/PFB математики.
-- Додати deterministic generators: bin-centered/off-bin tones, two-tone, blocker, chirp, AM, seeded noise, impulse і zero input.
-- Реалізувати rational timing alignment та metrics: RMS, max complex error, amplitude, phase, drift, leakage.
-
-**Done:** reference DDC має власні unit tests і може бути oracle для обох engines на коротких deterministic streams.
-
-#### Крок 5. Перетворити FDC skeleton на справжній overlap-save MVP
-
-- Спроєктувати anti-alias FIR/window для одного forced `D` і визначити `HistorySize = filterLength - 1`.
-- Гарантувати `N = HistorySize + ChunkSize`, divisibility/alignment і `ChunkSize <= MaxChunkSize`.
-- Копіювати повний `[history | chunk]` у FFTW forward input, застосовувати validated spectral window, backward transform, `1/N`, discard рівно `HistorySize/D`.
-- Винести wrap-safe extraction у окремий scalar-tested module без modulo в inner loop.
-- Вивести block/residual phase з absolute frame start і порівняти з reference DDC.
-
-**Done:** один-D FDC проходить amplitude, phase, history-discard, positive/negative/wrap center, blocker/alias і split-stream tests.
-
-#### Крок 6. Додати FDC planner і multiple-D groups
-
-- Enumerate power-of-two D candidates та bounded/smooth `N` candidates.
-- Узгодити engine-wide history/alignment для різних D.
-- Групувати batched inverse plans за short length; не дублювати forward FFT.
-- Заповнювати resolved plan реальними D, short lengths, filters, residuals, group delays і counts.
-
-**Done:** один request із кількома D groups має один forward FFT, deterministic outputs і збігається з independent DDC.
-
-#### Крок 7. Завершити scalar generalized PFB algebra для `P > 1`
-
-- Замінити `P = 1` rectangular fixture на Conservative prototype з `T = K * P`.
-- Реалізувати явну scalar branch equation `h[p+qK] * x[r-(p+qK)]` і незалежний direct FIR+DFT oracle.
-- Зберегти explicit post-FFT `C(r,k)` та pre-FFT shift reference variants.
-- Розширити tests на `H=K`, `H=K/2`, arbitrary H, negative bins, non-aligned `firstNew`, різні process partitions і `P > 1`.
-
-**Done:** PFB branch output, direct FIR+DFT, explicit correction і shifted FFT збігаються в установленій tolerance.
-
-#### Крок 8. Завершити scalar PFB production flow
-
-- Писати filtered phase vectors безпосередньо в FFTW-owned input або надати validated no-copy writable view; raw IQ history туди не копіювати.
-- Додати precomputed unique-bin router і fan-out для кількох channels одного bin.
-- Додати per-channel residual filter та scalar fine power-of-two decimator.
-- Забезпечити `FramesPerBatch % FineDecimation == 0` і exact one block per channel.
-
-**Done:** PFB проходить shared-bin, fine-decimation, no-duplicate-history, no-allocation і independent-DDC tests.
-
-#### Крок 9. Реалізувати generalized PFB planner
-
-- Enumerate valid `K`, integer `H` і `FramesPerBatch` під chunk bounds.
-- Перевіряти single-bin feasibility, residual range, output-rate constraints і folded response.
-- Спочатку підтримати лише Conservative prototypes; FoldAware залишити disabled до blocker/alias suite.
-- Довести planner-selected non-2× configuration окремим end-to-end test.
-
-**Done:** planner, а не лише forced hint, вибирає щонайменше один `H != K` і `H != K/2`, що проходить повну signal spec.
-
-#### Крок 10. Розширити correctness та integration suite
-
-- Додати всі релевантні сценарії розділу 10.2 для FDC і PFB.
-- Окремо перевірити exact counts/rates/timing, long-run phase, discontinuity/reset, first/last channel, bin wrap і worst residual `±DeltaF/2`.
-- Додати standalone та folded response sweeps, blocker sweeps по всіх alias bands.
-- Зберігати лише компактні machine-readable summaries в `artifacts/signal-validation/`.
-
-**Done:** обидва engines проходять independent DDC і alias acceptance suite; failures містять reproducible seed/configuration.
-
-#### Крок 11. Додати diagnostics та observability
-
-- Реалізувати allocation-free counters і stage timing з розділу 12.
-- Не логувати на sample/frame hot path; debug tracing має бути sampled або explicit opt-in.
-- Додати tests на monotonic counters та відсутність allocations із diagnostics enabled/disabled.
-
-**Done:** plan/runtime status пояснюють consumed counts, output counts, latency і failures без зміни sink contract.
-
-#### Крок 12. Побудувати реальний BenchmarkDotNet suite
-
-- Підключити BenchmarkDotNet у наявний третій project, не створювати новий project.
-- Додати FFTW, scalar primitives, FDC, PFB і end-to-end families з розділу 11.
-- Розділити initialization/planning та steady-state execution.
-- Генерувати `artifacts/benchmarks/latest-summary.md` з commit/environment/raw paths.
-
-**Done:** є reproducible baseline ns/input sample, allocations, working set і stage breakdown; жодних realtime claims без end-to-end result.
-
-#### Крок 13. SIMD gate — виконувати лише після явного дозволу
-
-- Після дозволу реалізувати scalar-equivalent AVX2/FMA primitives у порядку Phase 5.
-- Далі реалізувати phase-parallel PFB FIR з direct rotated store та FDC extraction kernels.
-- AVX-512 додавати лише якщо benchmark показує benefit; ISA dispatch робити один раз.
-
-**Done:** random/tail/alignment tests, scalar-vs-SIMD end-to-end tests і benchmarks зелені. До дозволу цей крок залишається unchecked.
-
-#### Крок 14. FoldAware та selected-bin experiments — лише за даними
-
-- Увімкнути FoldAware candidate тільки після folded evaluator і blocker sweep.
-- Реалізувати selected-bin/direct-DFT PFB лише якщо profile показує, що full FFT домінує для малого `Q`.
-- Не підключати experimental path до `Auto` до correctness і crossover evidence.
-
-**Done:** кожна optimization має stored correctness/benchmark evidence або залишається вимкненою.
-
-#### Крок 15. Завершити facade, docs і Auto останнім
-
-- Завершити public plan inspection, diagnostics, reset/reconfiguration docs і minimal production example.
-- Перевірити всі пункти Definition of Done та створити короткий acceptance report.
-- Реалізувати `Auto` лише з versioned benchmark profile schema і explainable resolved decision.
-- Оновити FFTW licensing/distribution documentation перед release/publish.
-
-**Done:** Definition of Done розділу 14 виконаний, Release tests і benchmarks відтворюються, а `Auto` не використовує неперевірені heuristics.
+Повний checklist, статус кожного кроку, evidence та обов’язковий update protocol перенесені в [`implementation-steps.md`](implementation-steps.md). Після кожного інкременту цей tracker потрібно актуалізувати до завершення роботи.
 
 ### 17.4. Найближчий рекомендований інкремент
 
-Наступному sub-агенту почати з **Кроку 1**, потім **Кроків 2–4**. Не переходити до повного FDC/PFB filter path, доки filter designer, folded evaluator та independent DDC не існують як окремі протестовані correctness modules. Це мінімізує ризик оптимізувати або інтегрувати неправильну DSP convention.
+Кроки 1 і 2 перевірені та завершені. Наступний implementation increment — **Крок 3** з [`implementation-steps.md`](implementation-steps.md), після нього **Крок 4**. Не переходити до повного FDC/PFB filter path, доки filter designer, folded evaluator та independent DDC не існують як окремі протестовані correctness modules.
+
+Крок 0 залишається окремим housekeeping завданням: потрібно створити acceptance owner/fixture map і малий manifest у `artifacts/signal-validation/`.
