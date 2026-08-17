@@ -1,0 +1,8 @@
+bin/
+obj/
+TestResults/
+BenchmarkDotNet.Artifacts/
+artifacts/
+.dotnet-cli/
+*.user
+*.suo

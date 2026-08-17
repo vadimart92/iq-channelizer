@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IqChannelizer", "src\IqChannelizer\IqChannelizer.csproj", "{84011E69-6514-41D3-8521-CF9E0ECD6C0A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IqChannelizer.Tests", "tests\IqChannelizer.Tests\IqChannelizer.Tests.csproj", "{A8DB64C0-E703-43A9-8972-03DB2F7A5945}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IqChannelizer.Benchmarks", "benchmarks\IqChannelizer.Benchmarks\IqChannelizer.Benchmarks.csproj", "{02A0280C-6682-4B77-BB86-9CB9ACEF78FC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{84011E69-6514-41D3-8521-CF9E0ECD6C0A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{84011E69-6514-41D3-8521-CF9E0ECD6C0A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{84011E69-6514-41D3-8521-CF9E0ECD6C0A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{84011E69-6514-41D3-8521-CF9E0ECD6C0A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A8DB64C0-E703-43A9-8972-03DB2F7A5945}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A8DB64C0-E703-43A9-8972-03DB2F7A5945}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A8DB64C0-E703-43A9-8972-03DB2F7A5945}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A8DB64C0-E703-43A9-8972-03DB2F7A5945}.Release|Any CPU.Build.0 = Release|Any CPU
+		{02A0280C-6682-4B77-BB86-9CB9ACEF78FC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{02A0280C-6682-4B77-BB86-9CB9ACEF78FC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{02A0280C-6682-4B77-BB86-9CB9ACEF78FC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{02A0280C-6682-4B77-BB86-9CB9ACEF78FC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
