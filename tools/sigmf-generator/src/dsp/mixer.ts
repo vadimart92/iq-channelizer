@@ -17,6 +17,19 @@ interface RadioComponent {
   weight: number;
 }
 
+interface RadioSegment {
+  durationSeconds: number;
+  phaseStartRad: number;
+  components: RadioComponent[];
+}
+
+interface RadioProfile {
+  segmentSamples: number;
+  segments: RadioSegment[];
+}
+
+const radioProfileCache = new WeakMap<FmRadioBlock, { signature: string; profile: RadioProfile }>();
+
 interface SweepEvent {
   sample: number;
   delta: number;
@@ -61,37 +74,84 @@ function hashUnit(seed: number, index: number): number {
   return (value >>> 0) / 0x1_0000_0000;
 }
 
-function radioComponents(block: FmRadioBlock): RadioComponent[] {
-  const count = 32;
+function radioComponents(block: FmRadioBlock, segmentIndex: number): RadioComponent[] {
+  const count = 12;
   const minimumHz = Math.min(80, block.audioBandwidthHz * 0.12);
   const ratio = block.audioBandwidthHz / minimumHz;
   const raw = Array.from({ length: count }, (_, index) => {
-    const position = (index + 0.35 + hashUnit(block.seed, index) * 0.3) / count;
+    const hashIndex = segmentIndex * count + index;
+    const position = (index + 0.2 + hashUnit(block.seed, hashIndex) * 0.6) / count;
     const frequencyHz = minimumHz * ratio ** position;
-    // A gentle speech/music-like tilt: more energy in the low-mid range.
-    const weight = (0.55 + hashUnit(block.seed ^ 0xa511e9b3, index)) / Math.sqrt(frequencyHz);
+    const weight = (0.35 + hashUnit(block.seed ^ 0xa511e9b3, hashIndex)) / Math.sqrt(frequencyHz);
     return {
       frequencyHz,
-      phaseRad: TWO_PI * hashUnit(block.seed ^ 0x63d83595, index),
+      phaseRad: TWO_PI * hashUnit(block.seed ^ 0x63d83595, hashIndex),
       weight,
     };
   });
   const totalWeight = raw.reduce((sum, component) => sum + component.weight, 0);
-  return raw.map((component) => ({ ...component, weight: component.weight / totalWeight }));
+  const activity = segmentIndex % 7 === 5
+    ? 0.06
+    : 0.55 + 0.45 * hashUnit(block.seed ^ 0x37a49f21, segmentIndex);
+  return raw.map((component) => ({ ...component, weight: activity * component.weight / totalWeight }));
+}
+
+function integratedSine(frequencyHz: number, phaseRad: number, seconds: number): number {
+  if (Math.abs(frequencyHz) < 1e-9) return Math.sin(phaseRad) * seconds;
+  return (Math.cos(phaseRad) - Math.cos(TWO_PI * frequencyHz * seconds + phaseRad))
+    / (TWO_PI * frequencyHz);
+}
+
+function radioSegmentPhaseDelta(block: FmRadioBlock, segment: RadioSegment, seconds: number): number {
+  const envelopeFrequencyHz = 1 / segment.durationSeconds;
+  let integral = 0;
+  for (const component of segment.components) {
+    const { frequencyHz, phaseRad, weight } = component;
+    // sin²(pi*t/T) burst envelope, expanded into three analytically integrable tones.
+    integral += weight * (
+      0.5 * integratedSine(frequencyHz, phaseRad, seconds)
+      - 0.25 * integratedSine(frequencyHz + envelopeFrequencyHz, phaseRad, seconds)
+      - 0.25 * integratedSine(frequencyHz - envelopeFrequencyHz, phaseRad, seconds)
+    );
+  }
+  return TWO_PI * block.deviationHz * integral;
+}
+
+function radioProfile(block: FmRadioBlock, sampleRateHz: number): RadioProfile {
+  const signature = `${sampleRateHz}:${block.sampleCount}:${block.audioBandwidthHz}:${block.deviationHz}:${block.seed}`;
+  const cached = radioProfileCache.get(block);
+  if (cached?.signature === signature) return cached.profile;
+  const segmentSamples = Math.max(1, Math.round(sampleRateHz * 0.024));
+  const segmentCount = Math.ceil(block.sampleCount / segmentSamples);
+  const segments: RadioSegment[] = [];
+  let phaseStartRad = 0;
+  for (let index = 0; index < segmentCount; index += 1) {
+    const samples = Math.min(segmentSamples, block.sampleCount - index * segmentSamples);
+    const segment: RadioSegment = {
+      durationSeconds: samples / sampleRateHz,
+      phaseStartRad,
+      components: radioComponents(block, index),
+    };
+    segments.push(segment);
+    phaseStartRad += radioSegmentPhaseDelta(block, segment, segment.durationSeconds);
+  }
+  const profile = { segmentSamples, segments };
+  radioProfileCache.set(block, { signature, profile });
+  return profile;
 }
 
 function fmRadioPhase(
   block: FmRadioBlock,
-  components: readonly RadioComponent[],
+  profile: RadioProfile,
   localSample: number,
   sampleRateHz: number,
 ): number {
   const time = localSample / sampleRateHz;
-  let modulationPhase = 0;
-  for (const component of components) {
-    modulationPhase += block.deviationHz * component.weight / component.frequencyHz
-      * (Math.cos(component.phaseRad) - Math.cos(TWO_PI * component.frequencyHz * time + component.phaseRad));
-  }
+  const segmentIndex = Math.min(profile.segments.length - 1, Math.floor(localSample / profile.segmentSamples));
+  const segment = profile.segments[segmentIndex];
+  if (!segment) return block.phaseRad + TWO_PI * block.centerFrequencyHz * time;
+  const segmentTime = (localSample - segmentIndex * profile.segmentSamples) / sampleRateHz;
+  const modulationPhase = segment.phaseStartRad + radioSegmentPhaseDelta(block, segment, segmentTime);
   return block.phaseRad + TWO_PI * block.centerFrequencyHz * time + modulationPhase;
 }
 
@@ -99,10 +159,10 @@ function phaseAt(
   block: SignalBlock,
   localSample: number,
   sampleRateHz: number,
-  components?: readonly RadioComponent[],
+  profile?: RadioProfile,
 ): number {
   if (block.kind === "fm") return fmPhase(block, localSample, sampleRateHz);
-  if (block.kind === "fm-radio") return fmRadioPhase(block, components ?? radioComponents(block), localSample, sampleRateHz);
+  if (block.kind === "fm-radio") return fmRadioPhase(block, profile ?? radioProfile(block, sampleRateHz), localSample, sampleRateHz);
   return block.phaseRad + TWO_PI * block.centerFrequencyHz * localSample / sampleRateHz;
 }
 
@@ -123,13 +183,13 @@ export function mixChunk(
     const overlapEnd = Math.min(chunkEnd, blockEndSample(block));
     if (overlapStart >= overlapEnd) continue;
     const amplitude = linearAmplitude(block) * masterGain;
-    const components = block.kind === "fm-radio" ? radioComponents(block) : undefined;
+    const profile = block.kind === "fm-radio" ? radioProfile(block, project.sampleRateHz) : undefined;
     for (let absoluteSample = overlapStart; absoluteSample < overlapEnd; absoluteSample += 1) {
       const localSample = absoluteSample - block.startSample;
       const outputIndex = (absoluteSample - firstSample) * 2;
       const envelope = raisedCosineEnvelope(localSample, block.sampleCount, block.fadeSamples);
       const magnitude = amplitude * envelope;
-      const phase = phaseAt(block, localSample, project.sampleRateHz, components);
+      const phase = phaseAt(block, localSample, project.sampleRateHz, profile);
       output[outputIndex] = (output[outputIndex] ?? 0) + magnitude * Math.cos(phase);
       output[outputIndex + 1] = (output[outputIndex + 1] ?? 0) + magnitude * Math.sin(phase);
     }

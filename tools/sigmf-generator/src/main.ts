@@ -270,7 +270,7 @@ function schedulePreview(): void {
       sampleEnd: editor.viewport.sampleEnd,
       frequencyLowHz: editor.viewport.frequencyLowHz,
       frequencyHighHz: editor.viewport.frequencyHighHz,
-    });
+    }, editor.previewColumnCount());
     previewSession = session;
     void session.result.then((preview) => {
       if (previewSession === session) editor.setPreview(preview);

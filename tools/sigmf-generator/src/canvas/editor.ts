@@ -93,7 +93,10 @@ export class CanvasEditor {
     this.#callbacks = callbacks;
     this.viewport.reset(project);
     this.#bindEvents();
-    new ResizeObserver(() => this.invalidate()).observe(canvas);
+    new ResizeObserver(() => {
+      this.invalidate();
+      this.#callbacks.onViewportChanged();
+    }).observe(canvas);
     requestAnimationFrame(() => this.#frame());
   }
 
@@ -131,6 +134,10 @@ export class CanvasEditor {
     this.viewport.reset(this.#project);
     this.invalidate();
     this.#callbacks.onViewportChanged();
+  }
+
+  previewColumnCount(): number {
+    return Math.max(64, Math.min(1_024, Math.ceil(this.#plotRect().width)));
   }
 
   select(id: string | undefined, additive = false): void {
@@ -223,7 +230,7 @@ export class CanvasEditor {
     const destinationHeight = this.viewport.yForFrequency(frequencyLow, plot.top, plot.height) - destinationY;
     this.#context.save();
     this.#context.globalAlpha = 0.62;
-    this.#context.imageSmoothingEnabled = true;
+    this.#context.imageSmoothingEnabled = false;
     this.#context.drawImage(this.#previewCanvas, sourceX, sourceY, sourceWidth, sourceHeight, destinationX, destinationY, destinationWidth, destinationHeight);
     this.#context.restore();
   }

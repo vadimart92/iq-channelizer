@@ -7,7 +7,7 @@ export interface PreviewSession {
   cancel(): void;
 }
 
-export function requestSpectralPreview(project: SignalProject, fftSize = 256, region?: PreviewRegion): PreviewSession {
+export function requestSpectralPreview(project: SignalProject, fftSize = 256, region?: PreviewRegion, width?: number): PreviewSession {
   const worker = new Worker(new URL("../worker/generate.worker.ts", import.meta.url), { type: "module" });
   const result = new Promise<SpectralPreview>((resolve, reject) => {
     worker.onmessage = (event: MessageEvent<WorkerResponse>): void => {
@@ -27,7 +27,7 @@ export function requestSpectralPreview(project: SignalProject, fftSize = 256, re
       worker.terminate();
       reject(new Error(event.message));
     };
-    const request: WorkerRequest = { type: "preview", project, fftSize, region };
+    const request: WorkerRequest = { type: "preview", project, fftSize, region, width };
     worker.postMessage(request);
   });
   return {

@@ -29,7 +29,7 @@ pnpm test
 2. Select **Tone** or **FM Radio** and drag on the canvas.
 3. Return to **Select** to move/resize blocks or edit exact values in the inspector.
 4. Keep **Computed spectral preview** enabled to compare the actual coarse STFT with the design blocks.
-   Select an FFT size from 64 to 8192: larger values improve frequency resolution, while smaller values improve time resolution and update faster. Preview FFT windows and returned frequency bins follow the visible time/frequency viewport.
+   Select an FFT size from 64 to 8192: larger values improve frequency resolution, while smaller values improve time resolution and update faster. Preview columns follow the canvas pixel width, FFT windows are centered across the visible time viewport, and only visible frequency bins are returned.
 5. Download `basename.sigmf` or a stereo float32 `basename.wav`.
 
 The archive is an uncompressed POSIX ustar file containing:
@@ -68,7 +68,7 @@ Tone:
 phase(k) = phase0 + 2*pi*fc*k/Fs
 ```
 
-FM Radio uses a deterministic built-in speech/music-like modulation source. It sums seeded audio components across the configured audio bandwidth, integrates that program into the carrier phase, and therefore produces a dense radio-like FM spectrum. Change **Program seed** for a different waveform while keeping exports reproducible.
+FM Radio uses a deterministic built-in speech/music-like modulation source. It generates changing 24 ms audio bursts with smooth envelopes, seeded spectral content and occasional quiet intervals, then integrates that program into a continuous carrier phase. Change **Program seed** for a different waveform while keeping exports reproducible.
 
 Legacy project files containing single-tone FM remain supported:
 

@@ -23,6 +23,9 @@ export async function computeSpectralPreview(
   requestedRegion?: PreviewRegion,
   shouldCancel: () => boolean = () => false,
 ): Promise<SpectralPreview> {
+  if (!Number.isSafeInteger(width) || width < 1 || width > 2_048) {
+    throw new RangeError("Preview width must be an integer from 1 to 2048.");
+  }
   if (!Number.isSafeInteger(fftSize) || fftSize < 32 || fftSize > 8_192 || (fftSize & (fftSize - 1)) !== 0) {
     throw new RangeError("FFT size must be a power of two from 32 to 8192.");
   }
@@ -44,16 +47,32 @@ export async function computeSpectralPreview(
   const powerDb = new Float64Array(width * height);
   let maximumDb = -Infinity;
   const gain = computeMasterGain(project);
-  const maxStart = Math.max(sampleStart, sampleEnd - fftSize);
+  const maxStart = Math.max(0, project.totalSamples - fftSize);
+  const analysisStart = Math.max(0, Math.floor(sampleStart - fftSize / 2));
+  const analysisEnd = Math.min(project.totalSamples, Math.ceil(sampleEnd + fftSize / 2));
+  const analysisSamples = analysisEnd - analysisStart;
+  let cachedIq: Float32Array | undefined;
+
+  if (analysisSamples <= 2_000_000) {
+    cachedIq = new Float32Array(analysisSamples * 2);
+    const chunkSize = 65_536;
+    for (let offset = 0; offset < analysisSamples; offset += chunkSize) {
+      if (shouldCancel()) throw new DOMException("Cancelled", "AbortError");
+      const count = Math.min(chunkSize, analysisSamples - offset);
+      cachedIq.set(mixChunk(project, analysisStart + offset, count, gain), offset * 2);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  }
   const fft = new WebFFT(fftSize, "kissWasm", false);
 
   try {
     for (let column = 0; column < width; column += 1) {
       if (shouldCancel()) throw new DOMException("Cancelled", "AbortError");
       const center = Math.round(sampleStart + (column + 0.5) * (sampleEnd - sampleStart) / width);
-      const start = Math.max(sampleStart, Math.min(maxStart, center - Math.floor(fftSize / 2)));
-      const available = Math.min(fftSize, sampleEnd - start);
-      const iq = mixChunk(project, start, available, gain);
+      const start = Math.max(0, Math.min(maxStart, center - Math.floor(fftSize / 2)));
+      const available = Math.min(fftSize, project.totalSamples - start);
+      const iq = cachedIq?.subarray((start - analysisStart) * 2, (start - analysisStart + available) * 2)
+        ?? mixChunk(project, start, available, gain);
       const input = new Float32Array(fftSize * 2);
       for (let sample = 0; sample < fftSize; sample += 1) {
         const window = 0.5 - 0.5 * Math.cos(2 * Math.PI * sample / (fftSize - 1));
