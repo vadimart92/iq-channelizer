@@ -12,6 +12,7 @@ public sealed class StreamingFlowTests
             Hints = new ChannelizerImplementationHints(FdcDecimationFactor: 2, Simd: SimdPreference.Scalar)
         };
         using var engine = ChannelizerFactory.Create(request);
+        Assert.That(engine.Plan.DspBackend, Does.Contain("FFTW"));
         var input = Tone(engine.InputRequirements.InputSize, 128, request.InputSampleRateHz, 0);
         var sink = new TestSink();
 
@@ -99,6 +100,35 @@ public sealed class StreamingFlowTests
         Assert.That(sink.Blocks.SelectMany(x => x.Samples).All(x => Math.Abs(x.Real - 1) < 1e-4 && Math.Abs(x.Imaginary) < 1e-4), Is.True);
     }
 
+    [TestCase(ChannelizerStrategy.Fdc)]
+    [TestCase(ChannelizerStrategy.Pfb)]
+    [NonParallelizable]
+    public void SteadyStateProcessDoesNotAllocateManagedMemory(ChannelizerStrategy strategy)
+    {
+        var request = ContractTests.Request(strategy, [ContractTests.Channel(1, 128)]) with
+        {
+            InputBlocks = new InputBlockConstraints(16, 16),
+            Hints = strategy == ChannelizerStrategy.Fdc
+                ? new ChannelizerImplementationHints(FdcDecimationFactor: 2, Simd: SimdPreference.Scalar)
+                : new ChannelizerImplementationHints(PfbFftSize: 8, PfbHopSize: 4, PfbFramesPerBatch: 4, Simd: SimdPreference.Scalar)
+        };
+        using var engine = ChannelizerFactory.Create(request);
+        var input = new ComplexF[engine.InputRequirements.InputSize];
+        var sink = new ChecksumSink();
+        engine.Process(input, 0, sink);
+        var firstNew = (long)engine.InputRequirements.ChunkSize;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        for (var iteration = 0; iteration < 20; iteration++)
+        {
+            engine.Process(input, firstNew, sink);
+            firstNew += engine.InputRequirements.ChunkSize;
+        }
+
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero);
+        Assert.That(sink.BlockCount, Is.EqualTo(21));
+    }
+
     private static ComplexF[] Tone(int count, double frequency, double sampleRate, long absoluteStart)
     {
         var result = new ComplexF[count];
@@ -108,5 +138,17 @@ public sealed class StreamingFlowTests
         }
 
         return result;
+    }
+
+    private sealed class ChecksumSink : IChannelOutputSink
+    {
+        public int BlockCount { get; private set; }
+        public float Checksum { get; private set; }
+
+        public void Write(int channelId, ReadOnlySpan<ComplexF> samples)
+        {
+            BlockCount++;
+            Checksum += channelId + samples[0].Real;
+        }
     }
 }

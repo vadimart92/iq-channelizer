@@ -44,10 +44,10 @@ public static class ChannelizerFactory
             InputSampleRateHz = request.InputSampleRateHz,
             InputRequirements = requirements,
             Channels = channels,
-            DspBackend = "Scalar direct DFT correctness backend",
+            DspBackend = "FFTW single-precision C2C",
             FftSize = chunk
         };
-        return new ScalarFdcEngine(plan, decimation);
+        return new FftwFdcEngine(plan, decimation);
     }
 
     private static IReadOnlyList<ResolvedChannelPlan> ResolveFdcChannels(ChannelizerRequest request, int decimation, int chunk)
@@ -104,12 +104,12 @@ public static class ChannelizerFactory
             InputSampleRateHz = request.InputSampleRateHz,
             InputRequirements = requirements,
             Channels = channels,
-            DspBackend = "Scalar generalized PFB correctness backend",
+            DspBackend = "FFTW single-precision batched C2C with scalar PFB FIR",
             FftSize = fftSize,
             HopSize = hopSize,
             FramesPerBatch = frames
         };
-        return new ScalarPfbEngine(plan, fftSize, hopSize, frames);
+        return new FftwPfbEngine(plan, fftSize, hopSize, frames);
     }
 
     private static ResolvedChannelPlan ResolveChannel(ChannelRequest request, double coarse, int bin, double outputRate, int outputCount, int inputSamplesPerOutput)

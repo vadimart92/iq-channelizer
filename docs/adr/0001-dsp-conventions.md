@@ -8,4 +8,4 @@ The PFB correctness backend uses the unnormalized `+j` transform. For frame anch
 
 Every oscillator and frame correction derives phase from absolute input sample positions. Process-local frame numbers are not a phase origin.
 
-This first implementation is deliberately scalar. FFTW and SIMD backends may replace internals later, but must preserve these conventions and the public streaming contract.
+Production transforms use the bundled single-precision FFTW DLL. Plans use `FFTW_ESTIMATE`, own `fftwf_malloc` input/output buffers, and are created outside the streaming path. The scalar DFT remains an independent correctness oracle. DSP kernels around FFTW remain scalar for now; future SIMD code must preserve these conventions and the public streaming contract.

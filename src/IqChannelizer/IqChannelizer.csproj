@@ -7,7 +7,10 @@
   </ItemGroup>
   <ItemGroup>
     <None Update="fftw3f\libfftw3f-3.dll">
+      <Link>libfftw3f-3.dll</Link>
+      <TargetPath>libfftw3f-3.dll</TargetPath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
   </ItemGroup>
 </Project>
