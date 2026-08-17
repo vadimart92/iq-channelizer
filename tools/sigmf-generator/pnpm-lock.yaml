@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      webfft:
+        specifier: ^1.0.3
+        version: 1.0.3
     devDependencies:
       '@types/node':
         specifier: ^26.2.0
@@ -585,6 +589,9 @@ packages:
       jsdom:
         optional: true
 
+  webfft@1.0.3:
+    resolution: {integrity: sha512-Xi9V1yiKuxJvfo9TysWs17C4++7c62KSr1uS9WKj6o3ZMVJdxkoT301qltym0hZxvSU0+8tWuGF1FHNdeP158g==}
+
   why-is-node-running@2.3.0:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
     engines: {node: '>=8'}
@@ -1031,6 +1038,8 @@ snapshots:
       - terser
       - tsx
       - yaml
+
+  webfft@1.0.3: {}
 
   why-is-node-running@2.3.0:
     dependencies:

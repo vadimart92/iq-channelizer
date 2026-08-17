@@ -108,6 +108,9 @@ const editor = new CanvasEditor(canvas, project, {
   onContextMenu(x, y): void {
     showContextMenu(x, y);
   },
+  onViewportChanged(): void {
+    schedulePreview();
+  },
 });
 
 function currentSnapshot(): EditorSnapshot {
@@ -262,7 +265,12 @@ function schedulePreview(): void {
     return;
   }
   previewTimer = window.setTimeout(() => {
-    const session = requestSpectralPreview(cloneProject(project));
+    const session = requestSpectralPreview(cloneProject(project), Number(select("preview-fft-size").value), {
+      sampleStart: editor.viewport.sampleStart,
+      sampleEnd: editor.viewport.sampleEnd,
+      frequencyLowHz: editor.viewport.frequencyLowHz,
+      frequencyHighHz: editor.viewport.frequencyHighHz,
+    });
     previewSession = session;
     void session.result.then((preview) => {
       if (previewSession === session) editor.setPreview(preview);
@@ -439,6 +447,7 @@ input("rf-center").addEventListener("input", () => {
   schedulePreview();
 });
 input("spectral-preview").addEventListener("change", () => schedulePreview());
+select("preview-fft-size").addEventListener("change", () => schedulePreview());
 element("save-project").addEventListener("click", () => downloadText(`${project.basename}.iqgen.json`, serializeProject(project)));
 element("load-project").addEventListener("click", () => input("project-file").click());
 input("project-file").addEventListener("change", async () => {

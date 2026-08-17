@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { raisedCosineEnvelope } from "../src/dsp/envelope";
 import { computeMasterGain, encodeCf32Le, mixChunk } from "../src/dsp/mixer";
+import { computeSpectralPreview } from "../src/dsp/preview";
 import { createDefaultProject, type SignalProject } from "../src/model/project";
 
 function toneProject(): SignalProject {
@@ -95,5 +96,38 @@ describe("DSP mixer", () => {
   it("encodes IEEE-754 floats little-endian", () => {
     const bytes = encodeCf32Le(new Float32Array([1, -1]));
     expect([...bytes]).toEqual([0, 0, 128, 63, 0, 0, 128, 191]);
+  });
+
+  it("uses the selected FFT size and places a complex tone in the expected bin", async () => {
+    const project = toneProject();
+    project.sampleRateHz = 64;
+    project.totalSamples = 64;
+    project.signals[0]!.sampleCount = 64;
+    project.signals[0]!.centerFrequencyHz = 8;
+    const preview = await computeSpectralPreview(project, 1, 64);
+    expect(preview.height).toBe(64);
+    const peakRow = preview.power.indexOf(Math.max(...preview.power));
+    expect(peakRow).toBe(23);
+    const cropped = await computeSpectralPreview(project, 2, 64, {
+      sampleStart: 16,
+      sampleEnd: 48,
+      frequencyLowHz: 0,
+      frequencyHighHz: 16,
+    });
+    expect(cropped.region.sampleStart).toBe(16);
+    expect(cropped.region.sampleEnd).toBe(48);
+    expect(cropped.region.frequencyLowHz).toBe(0);
+    expect(cropped.region.frequencyHighHz).toBe(16);
+    expect(cropped.height).toBe(16);
+    expect(cropped.power).toHaveLength(32);
+    const large = await computeSpectralPreview(project, 1, 8_192, {
+      sampleStart: 0,
+      sampleEnd: 64,
+      frequencyLowHz: 7,
+      frequencyHighHz: 9,
+    });
+    expect(large.height).toBe(256);
+    expect(large.power).toHaveLength(256);
+    await expect(computeSpectralPreview(project, 1, 100)).rejects.toThrow(/power of two/);
   });
 });

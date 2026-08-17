@@ -42,6 +42,7 @@ export interface CanvasEditorCallbacks {
   onEditStarted(): void;
   onEditCommitted(changed: boolean): void;
   onContextMenu(x: number, y: number): void;
+  onViewportChanged(): void;
 }
 
 const palette = {
@@ -129,6 +130,7 @@ export class CanvasEditor {
   resetViewport(): void {
     this.viewport.reset(this.#project);
     this.invalidate();
+    this.#callbacks.onViewportChanged();
   }
 
   select(id: string | undefined, additive = false): void {
@@ -205,15 +207,24 @@ export class CanvasEditor {
 
   #drawPreview(plot: PlotRect): void {
     if (!this.#preview || !this.#previewCanvas) return;
-    const sourceX = this.viewport.sampleStart / this.#project.totalSamples * this.#preview.width;
-    const sourceWidth = (this.viewport.sampleEnd - this.viewport.sampleStart) / this.#project.totalSamples * this.#preview.width;
-    const nyquist = this.#project.sampleRateHz / 2;
-    const sourceY = (nyquist - this.viewport.frequencyHighHz) / this.#project.sampleRateHz * this.#preview.height;
-    const sourceHeight = (this.viewport.frequencyHighHz - this.viewport.frequencyLowHz) / this.#project.sampleRateHz * this.#preview.height;
+    const region = this.#preview.region;
+    const sampleStart = Math.max(this.viewport.sampleStart, region.sampleStart);
+    const sampleEnd = Math.min(this.viewport.sampleEnd, region.sampleEnd);
+    const frequencyLow = Math.max(this.viewport.frequencyLowHz, region.frequencyLowHz);
+    const frequencyHigh = Math.min(this.viewport.frequencyHighHz, region.frequencyHighHz);
+    if (sampleStart >= sampleEnd || frequencyLow >= frequencyHigh) return;
+    const sourceX = (sampleStart - region.sampleStart) / (region.sampleEnd - region.sampleStart) * this.#preview.width;
+    const sourceWidth = (sampleEnd - sampleStart) / (region.sampleEnd - region.sampleStart) * this.#preview.width;
+    const sourceY = (region.frequencyHighHz - frequencyHigh) / (region.frequencyHighHz - region.frequencyLowHz) * this.#preview.height;
+    const sourceHeight = (frequencyHigh - frequencyLow) / (region.frequencyHighHz - region.frequencyLowHz) * this.#preview.height;
+    const destinationX = this.viewport.xForSample(sampleStart, plot.left, plot.width);
+    const destinationWidth = this.viewport.xForSample(sampleEnd, plot.left, plot.width) - destinationX;
+    const destinationY = this.viewport.yForFrequency(frequencyHigh, plot.top, plot.height);
+    const destinationHeight = this.viewport.yForFrequency(frequencyLow, plot.top, plot.height) - destinationY;
     this.#context.save();
     this.#context.globalAlpha = 0.62;
     this.#context.imageSmoothingEnabled = true;
-    this.#context.drawImage(this.#previewCanvas, sourceX, sourceY, sourceWidth, sourceHeight, plot.left, plot.top, plot.width, plot.height);
+    this.#context.drawImage(this.#previewCanvas, sourceX, sourceY, sourceWidth, sourceHeight, destinationX, destinationY, destinationWidth, destinationHeight);
     this.#context.restore();
   }
 
@@ -480,6 +491,7 @@ export class CanvasEditor {
       drag.startX = point.x;
       drag.startY = point.y;
       this.invalidate();
+      this.#callbacks.onViewportChanged();
       return;
     }
     if (drag.mode === "create" || drag.mode === "marquee") {
@@ -655,5 +667,6 @@ export class CanvasEditor {
       this.viewport.zoomTime(sample, Math.exp(event.deltaY * 0.0015), this.#project);
     }
     this.invalidate();
+    this.#callbacks.onViewportChanged();
   }
 }

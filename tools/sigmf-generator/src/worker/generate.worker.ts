@@ -45,11 +45,12 @@ async function preview(request: Extract<WorkerRequest, { type: "preview" }>): Pr
     request.project,
     request.width,
     request.fftSize,
+    request.region,
     () => cancelled,
   );
   const buffer = new ArrayBuffer(result.power.byteLength);
   new Uint8Array(buffer).set(result.power);
-  send({ type: "preview", width: result.width, height: result.height, power: buffer }, [buffer]);
+  send({ type: "preview", width: result.width, height: result.height, power: buffer, region: result.region }, [buffer]);
 }
 
 scope.addEventListener("message", (event: MessageEvent<WorkerRequest>) => {

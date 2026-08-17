@@ -29,6 +29,7 @@ pnpm test
 2. Select **Tone** or **FM Radio** and drag on the canvas.
 3. Return to **Select** to move/resize blocks or edit exact values in the inspector.
 4. Keep **Computed spectral preview** enabled to compare the actual coarse STFT with the design blocks.
+   Select an FFT size from 64 to 8192: larger values improve frequency resolution, while smaller values improve time resolution and update faster. Preview FFT windows and returned frequency bins follow the visible time/frequency viewport.
 5. Download `basename.sigmf` or a stereo float32 `basename.wav`.
 
 The archive is an uncompressed POSIX ustar file containing:

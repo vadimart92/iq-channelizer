@@ -41,6 +41,7 @@
         <div class="canvas-toolbar">
           <div class="legend"><i class="tone"></i>Tone <i class="fm"></i>FM Radio</div>
           <label class="toggle"><input id="spectral-preview" type="checkbox" checked /><span></span>Computed spectral preview</label>
+          <label class="fft-size">FFT<select id="preview-fft-size" aria-label="Spectral preview FFT size"><option>64</option><option>128</option><option selected>256</option><option>512</option><option>1024</option><option>2048</option><option>4096</option><option>8192</option></select></label>
           <span class="canvas-help">Wheel: time zoom · Alt+wheel: frequency zoom · Shift+wheel: pan</span>
         </div>
         <canvas id="signal-canvas" aria-label="Time and frequency signal composition canvas"></canvas>
