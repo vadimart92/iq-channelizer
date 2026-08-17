@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using IqChannelizer.Abstractions;
 using IqChannelizer.Fdc;
+using IqChannelizer.Fftw;
 using IqChannelizer.Pfb;
 using IqChannelizer.Runtime;
 
@@ -48,7 +49,7 @@ public static class ChannelizerFactory
             InputSampleRateHz = request.InputSampleRateHz,
             InputRequirements = requirements,
             Channels = channels,
-            DspBackend = "FFTW single-precision C2C",
+            DspBackend = $"FFTW {FftwRuntime.Info.Version} single-precision C2C",
             SelectedSimdBackend = SimdPreference.Scalar,
             ChunkAlignment = decimation,
             FftwThreadCount = 1,
@@ -136,7 +137,7 @@ public static class ChannelizerFactory
             InputSampleRateHz = request.InputSampleRateHz,
             InputRequirements = requirements,
             Channels = Array.AsReadOnly(channels),
-            DspBackend = "FFTW single-precision batched C2C with scalar PFB FIR",
+            DspBackend = $"FFTW {FftwRuntime.Info.Version} single-precision batched C2C with scalar PFB FIR",
             SelectedSimdBackend = SimdPreference.Scalar,
             ChunkAlignment = hopSize,
             FftwThreadCount = 1,

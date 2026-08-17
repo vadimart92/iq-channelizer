@@ -2,14 +2,19 @@ using IqChannelizer.Abstractions;
 
 namespace IqChannelizer.Fftw;
 
-internal sealed unsafe class FftwComplexPlan : IDisposable
+internal sealed class FftwComplexPlan : IDisposable
 {
-    private nint _plan;
-    private nint _input;
-    private nint _output;
+    private FftwAlignedBuffer<ComplexF>? _input;
+    private FftwAlignedBuffer<ComplexF>? _output;
+    private FftwPlanCache.Lease? _lease;
     private bool _disposed;
 
-    public FftwComplexPlan(int transformLength, int batchCount, int direction)
+    public FftwComplexPlan(
+        int transformLength,
+        int batchCount,
+        int direction,
+        bool inPlace = false,
+        FftwPlanningPolicy? policy = null)
     {
         if (transformLength <= 0)
         {
@@ -28,59 +33,53 @@ internal sealed unsafe class FftwComplexPlan : IDisposable
 
         TransformLength = transformLength;
         BatchCount = batchCount;
+        Direction = direction;
+        IsInPlace = inPlace;
+        PlanningPolicy = policy ?? new FftwPlanningPolicy();
         ElementCount = checked(transformLength * batchCount);
-        var byteCount = checked((nuint)ElementCount * (nuint)sizeof(ComplexF));
 
         try
         {
-            _input = FftwNative.Malloc(byteCount);
-            _output = FftwNative.Malloc(byteCount);
-            if (_input == 0 || _output == 0)
+            _input = new FftwAlignedBuffer<ComplexF>(ElementCount);
+            _output = inPlace ? _input : new FftwAlignedBuffer<ComplexF>(ElementCount);
+            if (_input.AlignmentClass != _output.AlignmentClass)
             {
-                throw new OutOfMemoryException("FFTW could not allocate its aligned complex buffers.");
+                throw new InvalidOperationException("FFTW input and output buffers have incompatible alignment classes.");
             }
 
-            if (batchCount == 1)
-            {
-                _plan = FftwNative.PlanDft1D(transformLength, _input, _output, direction, FftwNative.Estimate);
-            }
-            else
-            {
-                var length = transformLength;
-                _plan = FftwNative.PlanManyDft(
-                    1,
-                    &length,
-                    batchCount,
-                    _input,
-                    null,
-                    1,
-                    transformLength,
-                    _output,
-                    null,
-                    1,
-                    transformLength,
-                    direction,
-                    FftwNative.Estimate);
-            }
-
-            if (_plan == 0)
-            {
-                throw new InvalidOperationException("FFTW failed to create a complex DFT plan.");
-            }
+            var key = new FftwPlanKey(
+                transformLength,
+                batchCount,
+                direction,
+                InputStride: 1,
+                InputDistance: transformLength,
+                OutputStride: 1,
+                OutputDistance: transformLength,
+                inPlace,
+                PlanningPolicy.ThreadCount,
+                _input.AlignmentClass,
+                PlanningPolicy.Mode);
+            _lease = FftwPlanCache.Acquire(key);
         }
         catch
         {
-            ReleaseNativeResources();
+            ReleaseResources();
             throw;
         }
     }
 
     public int TransformLength { get; }
     public int BatchCount { get; }
+    public int Direction { get; }
     public int ElementCount { get; }
+    public bool IsInPlace { get; }
+    public FftwPlanningPolicy PlanningPolicy { get; }
 
-    internal nuint InputAddress => (nuint)_input;
-    internal nuint OutputAddress => (nuint)_output;
+    internal nuint InputAddress => _input?.Address ?? 0;
+    internal nuint OutputAddress => _output?.Address ?? 0;
+    internal int InputAlignmentClass => _input?.AlignmentClass ?? throw new ObjectDisposedException(nameof(FftwComplexPlan));
+    internal int OutputAlignmentClass => _output?.AlignmentClass ?? throw new ObjectDisposedException(nameof(FftwComplexPlan));
+    internal nint NativePlanAddress => _lease?.Plan ?? 0;
 
     public void Execute(ReadOnlySpan<ComplexF> input, Span<ComplexF> output)
     {
@@ -95,9 +94,9 @@ internal sealed unsafe class FftwComplexPlan : IDisposable
             throw new ArgumentException($"Expected exactly {ElementCount} FFTW output values.", nameof(output));
         }
 
-        input.CopyTo(new Span<ComplexF>((void*)_input, ElementCount));
-        FftwNative.Execute(_plan);
-        new ReadOnlySpan<ComplexF>((void*)_output, ElementCount).CopyTo(output);
+        input.CopyTo(_input!.Span);
+        FftwNative.ExecuteDft(_lease!.Plan, _input.Pointer, _output!.Pointer);
+        _output.ReadOnlySpan.CopyTo(output);
     }
 
     public void Dispose()
@@ -107,31 +106,24 @@ internal sealed unsafe class FftwComplexPlan : IDisposable
             return;
         }
 
-        ReleaseNativeResources();
+        ReleaseResources();
         _disposed = true;
         GC.SuppressFinalize(this);
     }
 
-    ~FftwComplexPlan() => ReleaseNativeResources();
+    ~FftwComplexPlan() => ReleaseResources();
 
-    private void ReleaseNativeResources()
+    private void ReleaseResources()
     {
-        if (_plan != 0)
+        _lease?.Dispose();
+        _lease = null;
+        if (!ReferenceEquals(_input, _output))
         {
-            FftwNative.DestroyPlan(_plan);
-            _plan = 0;
+            _output?.Dispose();
         }
 
-        if (_input != 0)
-        {
-            FftwNative.Free(_input);
-            _input = 0;
-        }
-
-        if (_output != 0)
-        {
-            FftwNative.Free(_output);
-            _output = 0;
-        }
+        _output = null;
+        _input?.Dispose();
+        _input = null;
     }
 }

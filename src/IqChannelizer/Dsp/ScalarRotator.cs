@@ -22,8 +22,8 @@ internal static class ScalarRotator
         var step = ComplexF.FromPolar(stepPhase);
         for (var index = 0; index < samples.Length; index++)
         {
-            samples[index] = samples[index] * phasor;
-            phasor = phasor * step;
+            samples[index] *= phasor;
+            phasor *= step;
             if ((index & 1023) == 1023)
             {
                 phasor = ComplexF.FromPolar(firstPhase + ((index + 1) * stepPhase));

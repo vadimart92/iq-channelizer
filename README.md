@@ -6,6 +6,8 @@ The current milestone provides the public request/plan/streaming contracts, dete
 
 The Windows x64 FFTW binary is copied beside consuming applications automatically. FFTW plans and aligned native buffers are created once with the engine and disposed with it; no planning occurs in `Process`.
 
+Runtime support, cache/wisdom policy, exact binary provenance, and release licensing obligations are documented in [docs/fftw-runtime.md](docs/fftw-runtime.md).
+
 ```csharp
 var request = new ChannelizerRequest(
     InputSampleRateHz: 1_000_000,
