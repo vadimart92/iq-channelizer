@@ -43,8 +43,31 @@ public sealed record ChannelRequest(
     double? MinimumOutputSampleRateHz = null,
     double? PreferredOutputSampleRateHz = null);
 
-public readonly record struct InputRequirements(int HistorySize, int ChunkSize)
+public readonly record struct InputRequirements
 {
+    public InputRequirements(int HistorySize, int ChunkSize)
+    {
+        if (HistorySize < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(HistorySize));
+        }
+
+        if (ChunkSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ChunkSize));
+        }
+
+        if (HistorySize > int.MaxValue - ChunkSize)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ChunkSize), "History and chunk sizes exceed the supported input span length.");
+        }
+
+        this.HistorySize = HistorySize;
+        this.ChunkSize = ChunkSize;
+    }
+
+    public int HistorySize { get; }
+    public int ChunkSize { get; }
     public int InputSize => checked(HistorySize + ChunkSize);
 }
 
@@ -99,4 +122,6 @@ public interface IStreamingChannelizer : IDisposable
         ReadOnlySpan<ComplexF> historyAndChunk,
         long firstNewSampleIndex,
         IChannelOutputSink output);
+
+    void Reset(long nextFirstNewSampleIndex);
 }

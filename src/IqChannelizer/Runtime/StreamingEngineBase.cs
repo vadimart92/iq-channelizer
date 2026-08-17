@@ -31,12 +31,25 @@ internal abstract class StreamingEngineBase : IStreamingChannelizer
             throw new InvalidOperationException($"Input discontinuity: expected { _expectedFirstNewSampleIndex}, got {firstNewSampleIndex}.");
         }
 
+        var nextFirstNewSampleIndex = checked(firstNewSampleIndex + InputRequirements.ChunkSize);
         ProcessCore(historyAndChunk, firstNewSampleIndex, output);
-        _expectedFirstNewSampleIndex = checked(firstNewSampleIndex + InputRequirements.ChunkSize);
+        _expectedFirstNewSampleIndex = nextFirstNewSampleIndex;
+        _hasExpectedIndex = true;
+    }
+
+    public void Reset(long nextFirstNewSampleIndex)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ResetCore();
+        _expectedFirstNewSampleIndex = nextFirstNewSampleIndex;
         _hasExpectedIndex = true;
     }
 
     protected abstract void ProcessCore(ReadOnlySpan<ComplexF> input, long firstNewSampleIndex, IChannelOutputSink output);
+
+    protected virtual void ResetCore()
+    {
+    }
 
     public void Dispose()
     {

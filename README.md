@@ -24,3 +24,7 @@ channelizer.Process(historyAndChunk, firstNewSampleIndex, outputSink);
 ```
 
 The caller owns the ring buffer and supplies exactly `[HistorySize | ChunkSize]`. Each `Process` call writes exactly one deterministic block per requested channel in request order.
+
+`ResolvedChannelizerPlan` contains immutable engine and per-channel rates, FFT/PFB dimensions, exact output counts, group delay, and the first-output offset in input-sample units. The offset is relative to `firstNewSampleIndex`: it is currently `0` for the length-one FDC fixture and `HopSize - 1` for the one-tap-per-phase PFB fixture. Plan warnings explicitly identify these non-production filters.
+
+After a stream discontinuity, call `Reset(nextFirstNewSampleIndex)` and provide fresh history (normally zero-filled at a new logical stream boundary) on the next `Process`. `Reset` establishes the exact absolute index accepted by that next call; it does not manufacture history. Calling either `Process` or `Reset` after disposal throws `ObjectDisposedException`.

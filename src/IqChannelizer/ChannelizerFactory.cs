@@ -38,6 +38,10 @@ public static class ChannelizerFactory
 
         var requirements = new InputRequirements(0, chunk);
         var channels = ResolveFdcChannels(request, decimation, chunk);
+        var shortLength = chunk / decimation;
+        var channelCount = channels.Count;
+        var nativeBytes = checked(16L * (chunk + ((long)shortLength * channelCount)));
+        var workingSetBytes = checked(nativeBytes + (8L * (chunk + (3L * shortLength * channelCount))));
         var plan = new ResolvedChannelizerPlan
         {
             Strategy = ChannelizerStrategy.Fdc,
@@ -45,7 +49,14 @@ public static class ChannelizerFactory
             InputRequirements = requirements,
             Channels = channels,
             DspBackend = "FFTW single-precision C2C",
-            FftSize = chunk
+            SelectedSimdBackend = SimdPreference.Scalar,
+            ChunkAlignment = decimation,
+            FftwThreadCount = 1,
+            AlignedBufferBytes = nativeBytes,
+            EstimatedWorkingSetBytes = workingSetBytes,
+            Warnings = Array.AsReadOnly(["FDC currently uses a length-one prototype; overlap-save filtering is not implemented yet."]),
+            FftSize = chunk,
+            FilterDesignMode = "LengthOneFixture"
         };
         return new FftwFdcEngine(plan, decimation);
     }
@@ -62,10 +73,12 @@ public static class ChannelizerFactory
             var normalizedBin = PfbMath.Mod(bin, chunk);
             var signedBin = normalizedBin <= chunk / 2 ? normalizedBin : normalizedBin - chunk;
             var coarse = signedBin * request.InputSampleRateHz / chunk;
-            result[index] = ResolveChannel(requested, coarse, normalizedBin, outputRate, chunk / decimation, decimation);
+            result[index] = ResolveChannel(
+                requested, coarse, normalizedBin, outputRate, chunk / decimation, decimation,
+                firstOutputOffset: 0, shortInverseFftLength: chunk / decimation);
         }
 
-        return result;
+        return Array.AsReadOnly(result);
     }
 
     private static IStreamingChannelizer CreatePfb(ChannelizerRequest request)
@@ -79,7 +92,15 @@ public static class ChannelizerFactory
             throw new ArgumentOutOfRangeException(nameof(request), "PFB requires K >= 2, 1 <= H <= K, and at least one frame.");
         }
 
-        var chunk = checked(frames * hopSize);
+        int chunk;
+        try
+        {
+            chunk = checked(frames * hopSize);
+        }
+        catch (OverflowException exception)
+        {
+            throw new ArgumentException("PFB frames and hop size overflow the supported chunk size.", nameof(request), exception);
+        }
         if (chunk > constraints.MaxChunkSize)
         {
             throw new ArgumentException("PFB frames do not fit MaxChunkSize.", nameof(request));
@@ -94,38 +115,88 @@ public static class ChannelizerFactory
             var bin = PfbMath.Mod((long)Math.Round(requested.CenterFrequencyHz * fftSize / request.InputSampleRateHz), fftSize);
             var signedBin = bin <= fftSize / 2 ? bin : bin - fftSize;
             var coarse = signedBin * request.InputSampleRateHz / fftSize;
-            channels[index] = ResolveChannel(requested, coarse, bin, outputRate, frames, hopSize);
+            channels[index] = ResolveChannel(
+                requested, coarse, bin, outputRate, frames, hopSize,
+                firstOutputOffset: hopSize - 1, pfbGroupId: 0, pfbFftSize: fftSize, pfbHopSize: hopSize);
         }
 
         var requirements = new InputRequirements(fftSize - 1, chunk);
+        var transformValues = checked((long)fftSize * frames);
+        if (transformValues > int.MaxValue)
+        {
+            throw new ArgumentException("PFB FFT size and frame count exceed the supported managed buffer length.", nameof(request));
+        }
+
+        var nativeBytes = checked(16L * transformValues);
+        var workingSetBytes = checked(nativeBytes + (16L * transformValues) +
+                                      (8L * frames * channels.Length) + (4L * fftSize));
         var plan = new ResolvedChannelizerPlan
         {
             Strategy = ChannelizerStrategy.Pfb,
             InputSampleRateHz = request.InputSampleRateHz,
             InputRequirements = requirements,
-            Channels = channels,
+            Channels = Array.AsReadOnly(channels),
             DspBackend = "FFTW single-precision batched C2C with scalar PFB FIR",
+            SelectedSimdBackend = SimdPreference.Scalar,
+            ChunkAlignment = hopSize,
+            FftwThreadCount = 1,
+            AlignedBufferBytes = nativeBytes,
+            EstimatedWorkingSetBytes = workingSetBytes,
+            Warnings = Array.AsReadOnly(["PFB currently uses a one-tap-per-phase rectangular algebra fixture, not a production prototype filter."]),
             FftSize = fftSize,
             HopSize = hopSize,
-            FramesPerBatch = frames
+            FramesPerBatch = frames,
+            OversamplingRatio = new RationalSampleOffset(fftSize, hopSize),
+            PfbPhaseShiftMode = "PreFftCircularShift",
+            TapsPerPhase = 1,
+            FilterDesignMode = "RectangularAlgebraFixture"
         };
         return new FftwPfbEngine(plan, fftSize, hopSize, frames);
     }
 
-    private static ResolvedChannelPlan ResolveChannel(ChannelRequest request, double coarse, int bin, double outputRate, int outputCount, int inputSamplesPerOutput)
+    private static ResolvedChannelPlan ResolveChannel(
+        ChannelRequest request,
+        double coarse,
+        int bin,
+        double outputRate,
+        int outputCount,
+        int inputSamplesPerOutput,
+        int firstOutputOffset,
+        int? shortInverseFftLength = null,
+        int? pfbGroupId = null,
+        int? pfbFftSize = null,
+        int? pfbHopSize = null)
     {
+        var warning = request.PreferredOutputSampleRateHz is { } preferred && outputRate < preferred
+            ? $"Resolved output rate {outputRate:R} Hz is below the preferred rate {preferred:R} Hz."
+            : null;
         return new ResolvedChannelPlan
         {
             ChannelId = request.ChannelId,
             RequestedCenterFrequencyHz = request.CenterFrequencyHz,
+            NormalizedCenterFrequencyHz = request.CenterFrequencyHz,
+            PassbandWidthHz = request.PassbandWidthHz,
+            TransitionWidthHz = request.TransitionWidthHz,
+            StopbandAttenuationDb = request.StopbandAttenuationDb,
+            PassbandRippleDb = request.PassbandRippleDb,
             CoarseCenterFrequencyHz = coarse,
+            CoarseOutputSampleRateHz = outputRate,
             ResidualFrequencyHz = request.CenterFrequencyHz - coarse,
             OutputSampleRateHz = outputRate,
             OutputSamplesPerProcess = outputCount,
             CoarseBin = bin,
             DecimationFactor = inputSamplesPerOutput,
+            FineDecimationFactor = 1,
+            ShortInverseFftLength = shortInverseFftLength,
+            PfbGroupId = pfbGroupId,
+            PfbFftSize = pfbFftSize,
+            PfbHopSize = pfbHopSize,
+            PrototypeFilterId = shortInverseFftLength.HasValue ? "LengthOneFdcFixture" : "RectangularPfbP1Fixture",
+            FineFilterId = "Identity",
             GroupDelayInputSamples = new RationalSampleOffset(0, 1),
-            InputSamplesPerOutputSample = new RationalSampleOffset(inputSamplesPerOutput, 1)
+            FirstOutputInputSampleOffset = new RationalSampleOffset(firstOutputOffset, 1),
+            InputSamplesPerOutputSample = new RationalSampleOffset(inputSamplesPerOutput, 1),
+            Warning = warning
         };
     }
 

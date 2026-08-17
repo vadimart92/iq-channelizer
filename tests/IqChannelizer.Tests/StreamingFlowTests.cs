@@ -80,6 +80,52 @@ public sealed class StreamingFlowTests
     }
 
     [Test]
+    public void ResetEstablishesANewContinuityOrigin()
+    {
+        using var engine = ChannelizerFactory.Create(ContractTests.Request(ChannelizerStrategy.Fdc, [ContractTests.Channel(1, 0)]));
+        var input = new ComplexF[engine.InputRequirements.InputSize];
+        var sink = new TestSink();
+        engine.Process(input, 0, sink);
+
+        engine.Reset(1_000);
+        engine.Process(input, 1_000, sink);
+
+        Assert.That(sink.Blocks, Has.Count.EqualTo(2));
+        Assert.That(() => engine.Process(input, 1_001, sink), Throws.TypeOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void ProcessWritesExactlyOncePerOpaqueIdInRequestOrder()
+    {
+        var channels = new[]
+        {
+            ContractTests.Channel(int.MinValue, 0),
+            ContractTests.Channel(42, 128),
+            ContractTests.Channel(int.MaxValue, -128)
+        };
+        using var engine = ChannelizerFactory.Create(ContractTests.Request(ChannelizerStrategy.Fdc, channels));
+        var sink = new TestSink();
+
+        engine.Process(new ComplexF[engine.InputRequirements.InputSize], 0, sink);
+
+        Assert.That(sink.Blocks.Select(block => block.ChannelId),
+            Is.EqualTo(new[] { int.MinValue, 42, int.MaxValue }));
+        Assert.That(sink.Blocks.Select(block => block.Samples.Length),
+            Is.EqualTo(engine.Plan.Channels.Select(channel => channel.OutputSamplesPerProcess)));
+    }
+
+    [Test]
+    public void DisposedEngineRejectsProcessAndReset()
+    {
+        var engine = ChannelizerFactory.Create(ContractTests.Request(ChannelizerStrategy.Fdc, [ContractTests.Channel(1, 0)]));
+        var input = new ComplexF[engine.InputRequirements.InputSize];
+        engine.Dispose();
+
+        Assert.That(() => engine.Process(input, 0, new TestSink()), Throws.TypeOf<ObjectDisposedException>());
+        Assert.That(() => engine.Reset(0), Throws.TypeOf<ObjectDisposedException>());
+    }
+
+    [Test]
     public void PfbContinuesAcrossProcessBoundaries()
     {
         var request = ContractTests.Request(ChannelizerStrategy.Pfb, [ContractTests.Channel(5, 128)]) with
