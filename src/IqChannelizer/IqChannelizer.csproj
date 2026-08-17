@@ -5,4 +5,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="IqChannelizer.Tests" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="fftw3f\libfftw3f-3.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>
