@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07111f" />
+    <title>SigMF Signal Composer</title>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">IQ</span>
+        <div><strong>SigMF Signal Composer</strong><small>Complex baseband canvas</small></div>
+      </div>
+      <div class="recording-settings">
+        <label>Filename<input id="basename" value="recording" spellcheck="false" /></label>
+        <label>Sample rate, Hz<input id="sample-rate" type="number" min="1" step="1000" value="1000000" /></label>
+        <label>Duration, s<input id="duration" type="number" min="0.000001" step="0.01" value="0.1" /></label>
+        <label>RF center, Hz <span>optional</span><input id="rf-center" type="number" step="1" placeholder="Baseband" /></label>
+      </div>
+      <div class="recording-summary">
+        <span id="sample-summary">100,000 samples</span>
+        <strong id="size-summary">781.3 KiB</strong>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="toolbox" aria-label="Canvas tools">
+        <button class="tool active" data-tool="select" title="Select and edit (V)"><span>↖</span>Select</button>
+        <button class="tool" data-tool="tone" title="Draw complex tone (T)"><span>∿</span>Tone</button>
+        <button class="tool" data-tool="fm" title="Draw single-tone FM (F)"><span>≋</span>FM</button>
+        <div class="tool-divider"></div>
+        <button id="reset-view" class="tool subtle" title="Fit the complete recording"><span>⌗</span>Fit</button>
+        <button id="delete-signal" class="tool subtle danger" title="Delete selected signal"><span>×</span>Delete</button>
+      </aside>
+
+      <section class="canvas-shell">
+        <div class="canvas-toolbar">
+          <div class="legend"><i class="tone"></i>Tone <i class="fm"></i>FM</div>
+          <label class="toggle"><input id="spectral-preview" type="checkbox" checked /><span></span>Computed spectral preview</label>
+          <span class="canvas-help">Wheel: time zoom · Alt+wheel: frequency zoom · Shift+wheel: pan</span>
+        </div>
+        <canvas id="signal-canvas" aria-label="Time and frequency signal composition canvas"></canvas>
+      </section>
+
+      <aside class="inspector">
+        <div class="panel-title"><div><span>Signal inspector</span><small id="selection-kind">No selection</small></div></div>
+        <div id="empty-inspector" class="empty-state">
+          <div class="empty-icon">⌁</div>
+          <p>Draw a Tone or FM block on the canvas, then select it to edit exact values.</p>
+        </div>
+        <form id="signal-form" class="signal-form" hidden>
+          <label>Start, s<input id="signal-start" type="number" step="0.000001" /></label>
+          <label>Duration, s<input id="signal-duration" type="number" step="0.000001" min="0" /></label>
+          <label>Center offset, Hz<input id="signal-center" type="number" step="1" /></label>
+          <label>Amplitude, dBFS<input id="signal-amplitude" type="number" min="-160" max="0" step="0.1" /></label>
+          <label>Initial phase, °<input id="signal-phase" type="number" step="1" /></label>
+          <label>Edge fade, ms<input id="signal-fade" type="number" min="0" step="0.1" /></label>
+          <div id="fm-fields" class="fm-fields">
+            <label>Modulation, Hz<input id="signal-fm" type="number" min="0.000001" step="1" /></label>
+            <label>Deviation, Hz<input id="signal-deviation" type="number" min="0" step="1" /></label>
+            <label>Modulation phase, °<input id="signal-mod-phase" type="number" step="1" /></label>
+            <output id="signal-bandwidth" class="bandwidth-output"></output>
+          </div>
+          <button id="inspector-delete" type="button" class="secondary danger">Delete signal</button>
+        </form>
+      </aside>
+    </main>
+
+    <footer class="action-bar">
+      <div class="validation-area">
+        <span id="status-dot" class="status-dot"></span>
+        <div><strong id="status-title">Ready</strong><small id="status-detail">Empty canvas will export zero IQ.</small></div>
+      </div>
+      <div id="progress-wrap" class="progress-wrap" hidden>
+        <div class="progress-track"><span id="progress-bar"></span></div>
+        <span id="progress-label">0%</span>
+      </div>
+      <div class="file-actions">
+        <button id="save-project" class="secondary">Save project</button>
+        <button id="load-project" class="secondary">Load project</button>
+        <input id="project-file" type="file" accept="application/json,.json" hidden />
+        <button id="cancel-export" class="secondary danger" hidden>Cancel</button>
+        <button id="download" class="primary"><span>↓</span>Download .sigmf</button>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
