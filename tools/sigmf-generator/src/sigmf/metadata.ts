@@ -26,6 +26,9 @@ function annotationComment(block: SignalBlock): string {
   if (block.kind === "tone") {
     return `Complex tone: fc=${block.centerFrequencyHz} Hz, amplitude=${block.amplitudeDbfs} dBFS, phase=${block.phaseRad} rad.`;
   }
+  if (block.kind === "fm-radio") {
+    return `Synthetic program FM: fc=${block.centerFrequencyHz} Hz, audio bandwidth=${block.audioBandwidthHz} Hz, deviation=${block.deviationHz} Hz, seed=${block.seed}, amplitude=${block.amplitudeDbfs} dBFS.`;
+  }
   return `Single-tone FM: fc=${block.centerFrequencyHz} Hz, fm=${block.modulationFrequencyHz} Hz, deviation=${block.deviationHz} Hz, amplitude=${block.amplitudeDbfs} dBFS.`;
 }
 

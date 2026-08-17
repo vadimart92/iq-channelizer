@@ -62,12 +62,22 @@ function validateBlock(
     if (!finite(block.modulationPhaseRad)) {
       issues.push({ severity: "error", path, message: "FM modulation phase must be finite." });
     }
+  } else if (block.kind === "fm-radio") {
+    if (!finite(block.audioBandwidthHz) || block.audioBandwidthHz < 20) {
+      issues.push({ severity: "error", path, message: "FM Radio audio bandwidth must be at least 20 Hz." });
+    }
+    if (!finite(block.deviationHz) || block.deviationHz <= 0) {
+      issues.push({ severity: "error", path, message: "FM Radio deviation must be greater than zero." });
+    }
+    if (!Number.isSafeInteger(block.seed) || block.seed < 0 || block.seed > 0xffff_ffff) {
+      issues.push({ severity: "error", path, message: "FM Radio seed must be a uint32 integer." });
+    }
   }
 
   const [low, high] = frequencyBounds(block);
   if (!finite(low) || !finite(high) || low < -nyquist || high >= nyquist) {
     issues.push({ severity: "error", path, message: "Declared occupied band crosses a Nyquist edge." });
-  } else if (block.kind === "fm") {
+  } else if (block.kind === "fm" || block.kind === "fm-radio") {
     const guard = Math.min(low + nyquist, nyquist - high);
     if (guard < project.sampleRateHz * 0.01) {
       issues.push({ severity: "warning", path, message: "FM spectral tails are close to a Nyquist edge." });

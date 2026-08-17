@@ -13,6 +13,17 @@ function toneProject(): SignalProject {
   };
 }
 
+function radioProject(seed = 7): SignalProject {
+  return {
+    ...createDefaultProject(), sampleRateHz: 192_000, totalSamples: 2_048, targetPeakDbfs: 0,
+    signals: [{
+      id: "radio", kind: "fm-radio", startSample: 0, sampleCount: 2_048,
+      centerFrequencyHz: 20_000, amplitudeDbfs: 0, phaseRad: Math.PI / 4, fadeSamples: 0,
+      audioBandwidthHz: 15_000, deviationHz: 45_000, seed,
+    }],
+  };
+}
+
 describe("DSP mixer", () => {
   it("generates a positive complex Fs/4 tone", () => {
     const iq = mixChunk(toneProject(), 0, 4);
@@ -55,6 +66,21 @@ describe("DSP mixer", () => {
     const iq = mixChunk(project, 0, 1);
     expect(iq[0]).toBeCloseTo(0.5, 6);
     expect(iq[1]).toBeCloseTo(Math.sqrt(3) / 2, 6);
+  });
+
+  it("generates deterministic, chunk-independent synthetic program FM", () => {
+    const project = radioProject();
+    const full = encodeCf32Le(mixChunk(project, 0, 2_048));
+    const joined = new Uint8Array(full.length);
+    joined.set(encodeCf32Le(mixChunk(project, 0, 513)), 0);
+    joined.set(encodeCf32Le(mixChunk(project, 513, 799)), 513 * 8);
+    joined.set(encodeCf32Le(mixChunk(project, 1_312, 736)), 1_312 * 8);
+    expect(joined).toEqual(full);
+
+    const first = mixChunk(project, 0, 1);
+    expect(first[0]).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(first[1]).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(mixChunk(radioProject(8), 0, 2_048)).not.toEqual(mixChunk(project, 0, 2_048));
   });
 
   it("creates a symmetric raised-cosine edge envelope", () => {

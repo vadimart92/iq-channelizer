@@ -79,6 +79,7 @@ const canvas = element<HTMLCanvasElement>("signal-canvas");
 const signalForm = element<HTMLFormElement>("signal-form");
 const emptyInspector = element<HTMLDivElement>("empty-inspector");
 const fmFields = element<HTMLDivElement>("fm-fields");
+const fmRadioFields = element<HTMLDivElement>("fm-radio-fields");
 const sigMfButton = element<HTMLButtonElement>("download");
 const wavButton = element<HTMLButtonElement>("download-wav");
 const cancelButton = element<HTMLButtonElement>("cancel-export");
@@ -213,7 +214,7 @@ function renderInspector(): void {
     element("empty-inspector-text").textContent = "Drag any selected block to move the group, or right-click to delete the selection.";
   } else if (!block) {
     element("selection-kind").textContent = "No selection";
-    element("empty-inspector-text").textContent = "Drag a selection box, or draw a Tone or FM block and select it to edit exact values.";
+    element("empty-inspector-text").textContent = "Drag a selection box, or draw a Tone or FM Radio block and select it to edit exact values.";
   } else {
     element("selection-kind").textContent = `${block.kind.toUpperCase()} · ${block.id.slice(0, 8)}`;
   }
@@ -225,12 +226,20 @@ function renderInspector(): void {
   input("signal-phase").value = String(degrees(block.phaseRad));
   input("signal-fade").value = String(block.fadeSamples / project.sampleRateHz * 1000);
   fmFields.hidden = block.kind !== "fm";
+  fmRadioFields.hidden = block.kind !== "fm-radio";
   if (block.kind === "fm") {
     input("signal-fm").value = String(block.modulationFrequencyHz);
     input("signal-deviation").value = String(block.deviationHz);
     input("signal-mod-phase").value = String(degrees(block.modulationPhaseRad));
     const [low, high] = frequencyBounds(block);
     element("signal-bandwidth").textContent = `Carson bandwidth: ${occupiedBandwidthHz(block).toLocaleString()} Hz (${low.toLocaleString()} … ${high.toLocaleString()} Hz)`;
+  }
+  if (block.kind === "fm-radio") {
+    input("signal-audio-bandwidth").value = String(block.audioBandwidthHz);
+    input("signal-radio-deviation").value = String(block.deviationHz);
+    input("signal-radio-seed").value = String(block.seed);
+    const [low, high] = frequencyBounds(block);
+    element("signal-radio-bandwidth").textContent = `Carson bandwidth: ${occupiedBandwidthHz(block).toLocaleString()} Hz (${low.toLocaleString()} … ${high.toLocaleString()} Hz)`;
   }
 }
 
@@ -328,6 +337,9 @@ function bindInspector(): void {
   input("signal-fm").addEventListener("input", () => updateSelected((block) => { if (block.kind === "fm") block.modulationFrequencyHz = Number(input("signal-fm").value); }));
   input("signal-deviation").addEventListener("input", () => updateSelected((block) => { if (block.kind === "fm") block.deviationHz = Number(input("signal-deviation").value); }));
   input("signal-mod-phase").addEventListener("input", () => updateSelected((block) => { if (block.kind === "fm") block.modulationPhaseRad = radians(Number(input("signal-mod-phase").value)); }));
+  input("signal-audio-bandwidth").addEventListener("input", () => updateSelected((block) => { if (block.kind === "fm-radio") block.audioBandwidthHz = Number(input("signal-audio-bandwidth").value); }));
+  input("signal-radio-deviation").addEventListener("input", () => updateSelected((block) => { if (block.kind === "fm-radio") block.deviationHz = Number(input("signal-radio-deviation").value); }));
+  input("signal-radio-seed").addEventListener("input", () => updateSelected((block) => { if (block.kind === "fm-radio") block.seed = Math.round(Number(input("signal-radio-seed").value)); }));
 }
 
 function setTool(tool: EditorTool): void {
@@ -472,7 +484,7 @@ window.addEventListener("keydown", (event) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement || event.target instanceof HTMLTextAreaElement) return;
   if (event.key.toLowerCase() === "v") setTool("select");
   if (event.key.toLowerCase() === "t") setTool("tone");
-  if (event.key.toLowerCase() === "f") setTool("fm");
+  if (event.key.toLowerCase() === "f") setTool("fm-radio");
 });
 
 bindInspector();

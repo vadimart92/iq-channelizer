@@ -4,6 +4,7 @@ import {
   frequencyBounds,
   newSignalId,
   type FmBlock,
+  type FmRadioBlock,
   type SignalBlock,
   type SignalKind,
   type SignalProject,
@@ -46,6 +47,7 @@ export interface CanvasEditorCallbacks {
 const palette = {
   tone: "#5eead4",
   fm: "#a78bfa",
+  "fm-radio": "#c084fc",
   selected: "#fbbf24",
 };
 
@@ -282,7 +284,7 @@ export class CanvasEditor {
       ctx.fillStyle = palette.selected;
       ctx.fillRect(rect.x - 3, rect.y + rect.height / 2 - 5, 6, 10);
       ctx.fillRect(rect.right - 3, rect.y + rect.height / 2 - 5, 6, 10);
-      if (block.kind === "fm") {
+      if (block.kind !== "tone") {
         ctx.fillRect(rect.x + rect.width / 2 - 5, rect.y - 3, 10, 6);
         ctx.fillRect(rect.x + rect.width / 2 - 5, rect.bottom - 3, 10, 6);
       }
@@ -338,7 +340,8 @@ export class CanvasEditor {
     const bottom = !marquee && this.#tool === "tone" ? current.y + 7 : Math.max(drag.startY, current.y);
     this.#context.save();
     this.#context.setLineDash([6, 4]);
-    this.#context.strokeStyle = marquee ? palette.selected : palette[this.#tool === "fm" ? "fm" : "tone"];
+    const creationColor = this.#tool === "tone" ? palette.tone : this.#tool === "fm-radio" ? palette["fm-radio"] : palette.fm;
+    this.#context.strokeStyle = marquee ? palette.selected : creationColor;
     this.#context.fillStyle = marquee ? "rgba(251, 191, 36, .08)" : "rgba(94, 234, 212, .12)";
     this.#context.fillRect(left, top, right - left, bottom - top);
     this.#context.strokeRect(left, top, right - left, bottom - top);
@@ -377,8 +380,8 @@ export class CanvasEditor {
       if (x < rect.left - 5 || x > rect.right + 5 || y < rect.top - 5 || y > rect.bottom + 5) continue;
       if (Math.abs(x - rect.left) <= 7) return { block, mode: "resize-start" };
       if (Math.abs(x - rect.right) <= 7) return { block, mode: "resize-end" };
-      if (block.kind === "fm" && Math.abs(y - rect.top) <= 7) return { block, mode: "resize-high" };
-      if (block.kind === "fm" && Math.abs(y - rect.bottom) <= 7) return { block, mode: "resize-low" };
+      if (block.kind !== "tone" && Math.abs(y - rect.top) <= 7) return { block, mode: "resize-high" };
+      if (block.kind !== "tone" && Math.abs(y - rect.bottom) <= 7) return { block, mode: "resize-low" };
       return { block, mode: "move" };
     }
     return undefined;
@@ -522,22 +525,25 @@ export class CanvasEditor {
       block.fadeSamples = Math.min(block.fadeSamples, Math.floor(block.sampleCount / 2));
     } else if (block.kind === "fm" && original.kind === "fm") {
       this.#resizeFm(block, original, frequency, drag.mode);
+    } else if (block.kind === "fm-radio" && original.kind === "fm-radio") {
+      this.#resizeFm(block, original, frequency, drag.mode);
     }
     drag.changed = true;
     this.#callbacks.onProjectChanged();
     this.invalidate();
   }
 
-  #resizeFm(block: FmBlock, original: FmBlock, frequency: number, mode: DragMode): void {
+  #resizeFm(block: FmBlock | FmRadioBlock, original: FmBlock | FmRadioBlock, frequency: number, mode: DragMode): void {
     const [originalLow, originalHigh] = frequencyBounds(original);
     const nyquist = this.#project.sampleRateHz / 2;
-    const minimumBandwidth = 2 * original.modulationFrequencyHz;
+    const sourceBandwidth = original.kind === "fm" ? original.modulationFrequencyHz : original.audioBandwidthHz;
+    const minimumBandwidth = 2 * sourceBandwidth;
     let low = originalLow;
     let high = originalHigh;
     if (mode === "resize-high") high = clamp(frequency, low + minimumBandwidth, nyquist - frequencyEpsilon(this.#project.sampleRateHz));
     else low = clamp(frequency, -nyquist, high - minimumBandwidth);
     block.centerFrequencyHz = (low + high) / 2;
-    block.deviationHz = Math.max(0, (high - low) / 2 - block.modulationFrequencyHz);
+    block.deviationHz = Math.max(0, (high - low) / 2 - sourceBandwidth);
   }
 
   #pointerUp(event: PointerEvent, cancelled = false): void {
@@ -584,15 +590,25 @@ export class CanvasEditor {
     const currentFrequency = this.viewport.frequencyAt(point.y, plot.top, plot.height);
     const fadeSamples = Math.min(Math.round(this.#project.sampleRateHz * 0.001), Math.floor((end - first) / 2));
     let block: SignalBlock;
-    if (this.#tool === "fm") {
+    if (this.#tool === "fm" || this.#tool === "fm-radio") {
       const nyquist = this.#project.sampleRateHz / 2;
       const bandwidth = Math.min(this.#project.sampleRateHz * 0.98, Math.max(Math.abs(currentFrequency - drag.startFrequencyHz), this.#project.sampleRateHz / 100));
       const center = clamp((currentFrequency + drag.startFrequencyHz) / 2, -nyquist + bandwidth / 2, nyquist - bandwidth / 2 - frequencyEpsilon(this.#project.sampleRateHz));
-      block = {
-        id: newSignalId(), kind: "fm", startSample: first, sampleCount: end - first,
-        centerFrequencyHz: center, amplitudeDbfs: -10, phaseRad: 0, fadeSamples,
-        modulationFrequencyHz: bandwidth / 4, deviationHz: bandwidth / 4, modulationPhaseRad: 0,
-      };
+      if (this.#tool === "fm-radio") {
+        const audioBandwidthHz = Math.max(20, Math.min(15_000, bandwidth * 0.15));
+        block = {
+          id: newSignalId(), kind: "fm-radio", startSample: first, sampleCount: end - first,
+          centerFrequencyHz: center, amplitudeDbfs: -10, phaseRad: 0, fadeSamples,
+          audioBandwidthHz, deviationHz: Math.max(1, bandwidth / 2 - audioBandwidthHz),
+          seed: this.#project.signals.length + 1,
+        };
+      } else {
+        block = {
+          id: newSignalId(), kind: "fm", startSample: first, sampleCount: end - first,
+          centerFrequencyHz: center, amplitudeDbfs: -10, phaseRad: 0, fadeSamples,
+          modulationFrequencyHz: bandwidth / 4, deviationHz: bandwidth / 4, modulationPhaseRad: 0,
+        };
+      }
     } else {
       block = {
         id: newSignalId(), kind: "tone", startSample: first, sampleCount: end - first,

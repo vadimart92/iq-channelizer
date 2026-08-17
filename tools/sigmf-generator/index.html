@@ -28,7 +28,7 @@
       <aside class="toolbox" aria-label="Canvas tools">
         <button class="tool active" data-tool="select" title="Select and edit (V)"><span>↖</span>Select</button>
         <button class="tool" data-tool="tone" title="Draw complex tone (T)"><span>∿</span>Tone</button>
-        <button class="tool" data-tool="fm" title="Draw single-tone FM (F)"><span>≋</span>FM</button>
+        <button class="tool" data-tool="fm-radio" title="Draw FM radio with built-in synthetic program audio (F)"><span>≋</span>FM Radio</button>
         <div class="tool-divider"></div>
         <button id="undo" class="tool subtle" title="Undo (Ctrl+Z)" disabled><span>↶</span>Undo</button>
         <button id="redo" class="tool subtle" title="Redo (Ctrl+Shift+Z)" disabled><span>↷</span>Redo</button>
@@ -39,7 +39,7 @@
 
       <section class="canvas-shell">
         <div class="canvas-toolbar">
-          <div class="legend"><i class="tone"></i>Tone <i class="fm"></i>FM</div>
+          <div class="legend"><i class="tone"></i>Tone <i class="fm"></i>FM Radio</div>
           <label class="toggle"><input id="spectral-preview" type="checkbox" checked /><span></span>Computed spectral preview</label>
           <span class="canvas-help">Wheel: time zoom · Alt+wheel: frequency zoom · Shift+wheel: pan</span>
         </div>
@@ -50,7 +50,7 @@
         <div class="panel-title"><div><span>Signal inspector</span><small id="selection-kind">No selection</small></div></div>
         <div id="empty-inspector" class="empty-state">
           <div class="empty-icon">⌁</div>
-          <p id="empty-inspector-text">Draw a Tone or FM block on the canvas, then select it to edit exact values.</p>
+          <p id="empty-inspector-text">Draw a Tone or FM Radio block on the canvas, then select it to edit exact values.</p>
         </div>
         <form id="signal-form" class="signal-form" hidden>
           <label>Start, s<input id="signal-start" type="number" step="0.000001" /></label>
@@ -64,6 +64,13 @@
             <label>Deviation, Hz<input id="signal-deviation" type="number" min="0" step="1" /></label>
             <label>Modulation phase, °<input id="signal-mod-phase" type="number" step="1" /></label>
             <output id="signal-bandwidth" class="bandwidth-output"></output>
+          </div>
+          <div id="fm-radio-fields" class="fm-fields" hidden>
+            <label>Audio bandwidth, Hz<input id="signal-audio-bandwidth" type="number" min="20" step="100" /></label>
+            <label>Deviation, Hz<input id="signal-radio-deviation" type="number" min="0.000001" step="100" /></label>
+            <label>Program seed<input id="signal-radio-seed" type="number" min="0" max="4294967295" step="1" /></label>
+            <output id="signal-radio-bandwidth" class="bandwidth-output"></output>
+            <small class="field-help">Built-in deterministic speech/music-like source. Change the seed for another program.</small>
           </div>
           <button id="inspector-delete" type="button" class="secondary danger">Delete signal</button>
         </form>

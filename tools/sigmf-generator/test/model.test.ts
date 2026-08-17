@@ -6,6 +6,7 @@ import {
   frequencyBounds,
   totalDataBytes,
   type FmBlock,
+  type FmRadioBlock,
 } from "../src/model/project";
 
 describe("project model", () => {
@@ -22,6 +23,15 @@ describe("project model", () => {
       modulationFrequencyHz: 5_000, deviationHz: 25_000, modulationPhaseRad: 0,
     };
     expect(frequencyBounds(block)).toEqual([-180_000, -120_000]);
+  });
+
+  it("derives Carson bounds for program-audio FM", () => {
+    const block: FmRadioBlock = {
+      id: "radio-1", kind: "fm-radio", startSample: 0, sampleCount: 100,
+      centerFrequencyHz: 100_000, amplitudeDbfs: -10, phaseRad: 0, fadeSamples: 0,
+      audioBandwidthHz: 15_000, deviationHz: 75_000, seed: 1,
+    };
+    expect(frequencyBounds(block)).toEqual([10_000, 190_000]);
   });
 
   it("round-trips a valid project", () => {

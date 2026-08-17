@@ -4,7 +4,7 @@ export const BYTES_PER_COMPLEX_SAMPLE = 8;
 export const MAX_USTAR_FILE_BYTES = 8 * 1024 ** 3 - 1;
 export const DEFAULT_BLOB_LIMIT_BYTES = 512 * 1024 ** 2;
 
-export type SignalKind = "tone" | "fm";
+export type SignalKind = "tone" | "fm" | "fm-radio";
 
 export interface BaseBlock {
   id: string;
@@ -28,7 +28,14 @@ export interface FmBlock extends BaseBlock {
   modulationPhaseRad: number;
 }
 
-export type SignalBlock = ToneBlock | FmBlock;
+export interface FmRadioBlock extends BaseBlock {
+  kind: "fm-radio";
+  audioBandwidthHz: number;
+  deviationHz: number;
+  seed: number;
+}
+
+export type SignalBlock = ToneBlock | FmBlock | FmRadioBlock;
 
 export interface SignalProject {
   schemaVersion: typeof PROJECT_SCHEMA_VERSION;
@@ -68,9 +75,9 @@ export function linearAmplitude(block: SignalBlock): number {
 }
 
 export function occupiedBandwidthHz(block: SignalBlock): number {
-  return block.kind === "tone"
-    ? 0
-    : 2 * (block.deviationHz + block.modulationFrequencyHz);
+  if (block.kind === "tone") return 0;
+  const messageBandwidth = block.kind === "fm" ? block.modulationFrequencyHz : block.audioBandwidthHz;
+  return 2 * (block.deviationHz + messageBandwidth);
 }
 
 export function frequencyBounds(block: SignalBlock): [number, number] {

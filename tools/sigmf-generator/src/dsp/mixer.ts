@@ -3,12 +3,19 @@ import {
   linearAmplitude,
   sortSignals,
   type FmBlock,
+  type FmRadioBlock,
   type SignalBlock,
   type SignalProject,
 } from "../model/project";
 import { raisedCosineEnvelope } from "./envelope";
 
 const TWO_PI = 2 * Math.PI;
+
+interface RadioComponent {
+  frequencyHz: number;
+  phaseRad: number;
+  weight: number;
+}
 
 interface SweepEvent {
   sample: number;
@@ -44,8 +51,58 @@ function fmPhase(block: FmBlock, localSample: number, sampleRateHz: number): num
     + beta * (Math.sin(modulationPhase) - Math.sin(block.modulationPhaseRad));
 }
 
-function phaseAt(block: SignalBlock, localSample: number, sampleRateHz: number): number {
+function hashUnit(seed: number, index: number): number {
+  let value = (seed + Math.imul(index + 1, 0x9e3779b9)) >>> 0;
+  value ^= value >>> 16;
+  value = Math.imul(value, 0x21f0aaad);
+  value ^= value >>> 15;
+  value = Math.imul(value, 0x735a2d97);
+  value ^= value >>> 15;
+  return (value >>> 0) / 0x1_0000_0000;
+}
+
+function radioComponents(block: FmRadioBlock): RadioComponent[] {
+  const count = 32;
+  const minimumHz = Math.min(80, block.audioBandwidthHz * 0.12);
+  const ratio = block.audioBandwidthHz / minimumHz;
+  const raw = Array.from({ length: count }, (_, index) => {
+    const position = (index + 0.35 + hashUnit(block.seed, index) * 0.3) / count;
+    const frequencyHz = minimumHz * ratio ** position;
+    // A gentle speech/music-like tilt: more energy in the low-mid range.
+    const weight = (0.55 + hashUnit(block.seed ^ 0xa511e9b3, index)) / Math.sqrt(frequencyHz);
+    return {
+      frequencyHz,
+      phaseRad: TWO_PI * hashUnit(block.seed ^ 0x63d83595, index),
+      weight,
+    };
+  });
+  const totalWeight = raw.reduce((sum, component) => sum + component.weight, 0);
+  return raw.map((component) => ({ ...component, weight: component.weight / totalWeight }));
+}
+
+function fmRadioPhase(
+  block: FmRadioBlock,
+  components: readonly RadioComponent[],
+  localSample: number,
+  sampleRateHz: number,
+): number {
+  const time = localSample / sampleRateHz;
+  let modulationPhase = 0;
+  for (const component of components) {
+    modulationPhase += block.deviationHz * component.weight / component.frequencyHz
+      * (Math.cos(component.phaseRad) - Math.cos(TWO_PI * component.frequencyHz * time + component.phaseRad));
+  }
+  return block.phaseRad + TWO_PI * block.centerFrequencyHz * time + modulationPhase;
+}
+
+function phaseAt(
+  block: SignalBlock,
+  localSample: number,
+  sampleRateHz: number,
+  components?: readonly RadioComponent[],
+): number {
   if (block.kind === "fm") return fmPhase(block, localSample, sampleRateHz);
+  if (block.kind === "fm-radio") return fmRadioPhase(block, components ?? radioComponents(block), localSample, sampleRateHz);
   return block.phaseRad + TWO_PI * block.centerFrequencyHz * localSample / sampleRateHz;
 }
 
@@ -66,12 +123,13 @@ export function mixChunk(
     const overlapEnd = Math.min(chunkEnd, blockEndSample(block));
     if (overlapStart >= overlapEnd) continue;
     const amplitude = linearAmplitude(block) * masterGain;
+    const components = block.kind === "fm-radio" ? radioComponents(block) : undefined;
     for (let absoluteSample = overlapStart; absoluteSample < overlapEnd; absoluteSample += 1) {
       const localSample = absoluteSample - block.startSample;
       const outputIndex = (absoluteSample - firstSample) * 2;
       const envelope = raisedCosineEnvelope(localSample, block.sampleCount, block.fadeSamples);
       const magnitude = amplitude * envelope;
-      const phase = phaseAt(block, localSample, project.sampleRateHz);
+      const phase = phaseAt(block, localSample, project.sampleRateHz, components);
       output[outputIndex] = (output[outputIndex] ?? 0) + magnitude * Math.cos(phase);
       output[outputIndex + 1] = (output[outputIndex + 1] ?? 0) + magnitude * Math.sin(phase);
     }

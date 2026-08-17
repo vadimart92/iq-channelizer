@@ -26,7 +26,7 @@ pnpm test
 ## Workflow
 
 1. Set filename, sample rate in Hz/kHz/MHz, duration and optional RF center frequency.
-2. Select **Tone** or **FM** and drag on the canvas.
+2. Select **Tone** or **FM Radio** and drag on the canvas.
 3. Return to **Select** to move/resize blocks or edit exact values in the inspector.
 4. Keep **Computed spectral preview** enabled to compare the actual coarse STFT with the design blocks.
 5. Download `basename.sigmf` or a stereo float32 `basename.wav`.
@@ -48,7 +48,7 @@ WAV export uses `WAVE_FORMAT_IEEE_FLOAT`, 32 bits, two channels: `I = left`, `Q 
 - `Alt + wheel`: zoom frequency;
 - `Shift + wheel`: pan time;
 - middle drag or `Space + drag`: pan both axes;
-- `V`, `T`, `F`: Select, Tone, FM;
+- `V`, `T`, `F`: Select, Tone, FM Radio;
 - drag empty canvas in Select mode: marquee/multi-selection;
 - `Ctrl/Cmd + click`: toggle one signal in the selection;
 - drag any selected signal: move the complete multi-selection;
@@ -67,7 +67,9 @@ Tone:
 phase(k) = phase0 + 2*pi*fc*k/Fs
 ```
 
-Single-tone FM:
+FM Radio uses a deterministic built-in speech/music-like modulation source. It sums seeded audio components across the configured audio bandwidth, integrates that program into the carrier phase, and therefore produces a dense radio-like FM spectrum. Change **Program seed** for a different waveform while keeping exports reproducible.
+
+Legacy project files containing single-tone FM remain supported:
 
 ```text
 beta = deviation/fm
@@ -77,7 +79,7 @@ phase(k) = phase0 + 2*pi*fc*k/Fs
 
 Blocks use a symmetric raised-cosine edge fade. Overlapping signals add linearly. A conservative master gain keeps the maximum sum of active block amplitudes at the configured target (currently -1 dBFS) without a limiter or waveform distortion.
 
-FM block height represents Carson's estimated occupied bandwidth, `2 * (deviation + fm)`. Real FM has spectral tails beyond that rectangle; the computed preview shows this distinction.
+FM block height represents Carson's estimated occupied bandwidth, `2 * (deviation + audio bandwidth)`. Real FM has spectral tails beyond that rectangle; the computed preview shows this distinction.
 
 ## Project files
 
@@ -87,7 +89,7 @@ FM block height represents Carson's estimated occupied bandwidth, `2 * (deviatio
 
 - one complex channel;
 - `cf32_le` only;
-- Tone and single-tone FM only;
+- Tone and FM Radio with a built-in synthetic program source; imported audio is not yet supported;
 - raw dataset at most `8 GiB - 1 byte` for the simple ustar writer;
 - classic WAV sample payload at most approximately 4 GiB; WAV sample rate must be an integer;
 - Blob fallback at most 512 MiB;
