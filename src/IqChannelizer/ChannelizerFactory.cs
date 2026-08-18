@@ -29,44 +29,29 @@ public static class ChannelizerFactory
 
     private static IStreamingChannelizer CreateFdc(ChannelizerRequest request)
     {
-        var constraints = request.InputBlocks ?? new InputBlockConstraints();
-        var decimation = request.Hints?.FdcDecimationFactor ?? 1;
-        ValidatePowerOfTwo(decimation, nameof(ChannelizerImplementationHints.FdcDecimationFactor));
-        var chunk = constraints.PreferredChunkSize - (constraints.PreferredChunkSize % decimation);
-        if (chunk <= 0 || chunk > constraints.MaxChunkSize)
-        {
-            throw new ArgumentException("No FDC chunk satisfies the requested decimation and block constraints.", nameof(request));
-        }
-
-        var taps = request.Channels
-            .Select(channel => FdcFilterDesign.DesignAlignedTaps(channel, request.InputSampleRateHz, decimation))
-            .ToArray();
-        var history = taps.Max(item => item.Length - 1);
-        if (history % decimation != 0)
-        {
-            throw new InvalidOperationException("FDC filter history must be divisible by its decimation factor.");
-        }
-
-        var requirements = new InputRequirements(history, chunk);
+        var layout = FdcPlanner.CreateLayout(request);
+        var requirements = layout.InputRequirements;
+        var history = requirements.HistorySize;
+        var chunk = requirements.ChunkSize;
         var transformLength = requirements.InputSize;
-        var channels = ResolveFdcChannels(request, decimation, transformLength, chunk, history);
+        var channels = ResolveFdcChannels(request, layout.Decimations, transformLength, chunk, history);
         var designs = new FdcChannelDesign[channels.Count];
         for (var index = 0; index < designs.Length; index++)
         {
-            var channelTaps = PadFilterToHistory(taps[index], history);
+            var channelTaps = PadFilterToHistory(layout.Taps[index], history);
             designs[index] = FdcFilterDesign.Complete(
                 request.Channels[index],
                 channelTaps,
                 request.InputSampleRateHz,
-                decimation,
+                layout.Decimations[index],
                 transformLength,
                 channels[index].ResidualFrequencyHz);
         }
 
-        var shortLength = transformLength / decimation;
-        var channelCount = channels.Count;
-        var nativeBytes = checked(16L * (transformLength + ((long)shortLength * channelCount)));
-        var workingSetBytes = checked(nativeBytes + (8L * (transformLength + (4L * shortLength * channelCount))));
+        var sumShortLengths = channels.Sum(channel => (long)channel.ShortInverseFftLength!.Value);
+        var outputValues = channels.Sum(channel => (long)channel.OutputSamplesPerProcess);
+        var nativeBytes = checked(16L * (transformLength + sumShortLengths));
+        var workingSetBytes = checked(nativeBytes + (8L * transformLength) + (24L * sumShortLengths) + (8L * outputValues));
         var plan = new ResolvedChannelizerPlan
         {
             Strategy = ChannelizerStrategy.Fdc,
@@ -75,7 +60,7 @@ public static class ChannelizerFactory
             Channels = channels,
             DspBackend = $"FFTW {FftwRuntime.Info.Version} single-precision C2C",
             SelectedSimdBackend = SimdPreference.Scalar,
-            ChunkAlignment = decimation,
+            ChunkAlignment = layout.MaximumDecimation,
             FftwThreadCount = 1,
             AlignedBufferBytes = nativeBytes,
             EstimatedWorkingSetBytes = workingSetBytes,
@@ -83,21 +68,22 @@ public static class ChannelizerFactory
             FftSize = transformLength,
             FilterDesignMode = "KaiserConservativeOverlapSave"
         };
-        return new FftwFdcEngine(plan, decimation, designs);
+        return new FftwFdcEngine(plan, designs);
     }
 
     private static IReadOnlyList<ResolvedChannelPlan> ResolveFdcChannels(
         ChannelizerRequest request,
-        int decimation,
+        IReadOnlyList<int> decimations,
         int transformLength,
         int chunk,
         int history)
     {
-        var outputRate = request.InputSampleRateHz / decimation;
         var result = new ResolvedChannelPlan[request.Channels.Count];
         for (var index = 0; index < result.Length; index++)
         {
             var requested = request.Channels[index];
+            var decimation = decimations[index];
+            var outputRate = request.InputSampleRateHz / decimation;
             ValidateOutputRate(requested, outputRate);
             var bin = (int)Math.Round(requested.CenterFrequencyHz * transformLength / request.InputSampleRateHz);
             var normalizedBin = PfbMath.Mod(bin, transformLength);
@@ -255,11 +241,4 @@ public static class ChannelizerFactory
         }
     }
 
-    private static void ValidatePowerOfTwo(int value, string name)
-    {
-        if (value <= 0 || (value & (value - 1)) != 0)
-        {
-            throw new ArgumentOutOfRangeException(name, "The scalar FDC MVP accepts power-of-two decimation factors.");
-        }
-    }
 }

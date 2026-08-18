@@ -17,12 +17,14 @@ internal static class FdcFilterDesign
     {
         var passbandEdge = channel.PassbandWidthHz / 2;
         var stopbandEdge = (channel.PassbandWidthHz + channel.TransitionWidthHz) / 2;
+        // Magnitude-summing D-1 alias images can cost up to 20*log10(D-1) dB.
+        var aliasBudgetDb = 20 * Math.Log10(Math.Max(1, decimation - 1));
         var filter = KaiserLowPassDesigner.Design(new LowPassFilterSpec(
             inputSampleRateHz,
             passbandEdge,
             stopbandEdge,
             channel.PassbandRippleDb,
-            channel.StopbandAttenuationDb));
+            channel.StopbandAttenuationDb + aliasBudgetDb));
 
         var alignedOrder = checked(((filter.Order + decimation - 1) / decimation) * decimation);
         if (alignedOrder == filter.Order)

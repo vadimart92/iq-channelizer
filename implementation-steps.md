@@ -17,10 +17,10 @@
 ## Остання перевірка
 
 - Дата: **2026-08-18**
-- Verified baseline commit: `170dfe4`
-- Tracker update: `uncommitted Step 5 working tree` поверх `170dfe4`
-- Release tests: **117 passed, 0 failed, 0 skipped** (повний restore + test)
-- Найближчий implementation step: **Крок 6 — FDC planner і multiple-D groups**
+- Verified baseline commit: `58ec6a5`
+- Tracker update: `uncommitted Step 6 working tree` поверх `58ec6a5`
+- Release tests: **122 passed, 0 failed, 0 skipped** (повний restore + test)
+- Найближчий implementation step: **Крок 7 — generalized PFB algebra `P > 1`**
 - Окремий housekeeping blocker: **Крок 0** ще не виконано, бо немає acceptance owner/fixture map і `artifacts/signal-validation/README.md`
 
 ## Зведена таблиця
@@ -32,9 +32,9 @@
 | 2. FFTW runtime | виконано | Commit `3eb2c62`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
 | 3. Scalar filter-design foundation | виконано | Commit history до `5bae632`; повторно перевірено зі Step 5 working tree, 117/117 tests |
 | 4. Independent reference DDC/toolkit | виконано | Commit `170dfe4`; 20 dedicated tests; повторно перевірено зі Step 5 working tree |
-| 5. FDC overlap-save MVP | виконано | Uncommitted working tree поверх `170dfe4`; full-frame FFT, Kaiser window, exact discard, DDC/signal acceptance; 117/117 tests |
-| 6. FDC planner/multiple-D | наступний | Один forced power-of-two `D` готовий; потрібні candidate enumeration і grouped inverse plans |
-| 7. Generalized PFB algebra `P > 1` | не почато | Conservative prototype потребує Кроку 3 |
+| 5. FDC overlap-save MVP | виконано | Commit `58ec6a5`; full-frame FFT, Kaiser window, exact discard, DDC/signal acceptance |
+| 6. FDC planner/multiple-D | виконано | Uncommitted working tree поверх `58ec6a5`; per-channel D planner, shared N/forward FFT, grouped inverse plans; 122/122 tests |
+| 7. Generalized PFB algebra `P > 1` | наступний | Кроки 3–6 завершено; Conservative production prototype ще не реалізовано |
 | 8. Scalar PFB production flow | не почато | Залежить від Кроків 4 і 7 |
 | 9. Generalized PFB planner | не почато | FoldAware лишається disabled |
 | 10. Correctness/integration suite | не почато | Розширюється після production flows |
@@ -116,7 +116,7 @@
 
 ### Крок 5. Перетворити FDC skeleton на справжній overlap-save MVP
 
-**Статус: виконано.** Uncommitted working tree поверх `170dfe4`; 117/117 Release tests.
+**Статус: виконано.** Commit `58ec6a5`; 117/117 Release tests на момент коміту.
 
 - Спроєктувати anti-alias FIR/window для одного forced `D` і визначити `HistorySize = filterLength - 1`.
 - Гарантувати `N = HistorySize + ChunkSize`, divisibility/alignment і `ChunkSize <= MaxChunkSize`.
@@ -134,7 +134,7 @@
 
 ### Крок 6. Додати FDC planner і multiple-D groups
 
-**Статус: наступний.**
+**Статус: виконано.** Uncommitted working tree поверх `58ec6a5`; 122/122 Release tests.
 
 - Enumerate power-of-two `D` candidates та bounded/smooth `N` candidates.
 - Узгодити engine-wide history/alignment для різних `D`.
@@ -143,9 +143,15 @@
 
 **Done:** один request із кількома `D` groups має один forward FFT, deterministic outputs і збігається з independent DDC.
 
+**Evidence:** `FdcPlanner.cs`, multi-group runtime у `FftwFdcEngine.cs`, planner integration у `ChannelizerFactory.cs`, alias-budget refinement у `FdcFilterDesign.cs`, `FdcPlannerTests.cs`, оновлений `README.md`.
+
+**Design decisions:** без forced hint planner вибирає найбільший feasible power-of-two `D` окремо для кожного каналу з урахуванням occupied width, minimum і preferred rate. Forced `FdcDecimationFactor` є global override. Engine-wide history округлюється до `max(D)`, chunk candidates bounded `MaxChunkSize`, вирівняні до `max(D)` і класифікуються за FFTW-friendly factors `2/3/5/7` при збереженні пріоритету близькості до preferred chunk. Runtime створює одну backward batch group на distinct `D`, виконує один shared forward FFT і маршрутизує output у початковому request order. Filter attenuation включає conservative alias-image budget `20*log10(D-1)`.
+
+**Done підтверджено:** multi-D fixture автоматично вибирає `D=8` і `D=2`, має дві short-IFFT groups, один forward execution, deterministic counts/order і для обох каналів збігається з independent DDC. Окремо перевірено preferred-rate constraint, forced override та smooth-length classifier; повний regression/no-allocation suite зелений.
+
 ### Крок 7. Завершити scalar generalized PFB algebra для `P > 1`
 
-**Статус: не почато.**
+**Статус: наступний.**
 
 - Замінити `P = 1` rectangular fixture на Conservative prototype з `T = K * P`.
 - Реалізувати scalar branch equation `h[p+qK] * x[r-(p+qK)]` і незалежний direct FIR+DFT oracle.
