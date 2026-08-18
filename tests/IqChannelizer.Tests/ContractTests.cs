@@ -147,7 +147,9 @@ public sealed class ContractTests
                 Is.EqualTo(new RationalSampleOffset(
                     2 - resolved.GroupDelayInputSamples.Numerator,
                     resolved.GroupDelayInputSamples.Denominator)));
-            Assert.That(resolved.InputSamplesPerOutputSample, Is.EqualTo(new RationalSampleOffset(3, 1)));
+            Assert.That(resolved.FineDecimationFactor, Is.EqualTo(4));
+            Assert.That(resolved.OutputSamplesPerProcess, Is.EqualTo(1));
+            Assert.That(resolved.InputSamplesPerOutputSample, Is.EqualTo(new RationalSampleOffset(12, 1)));
         });
     }
 

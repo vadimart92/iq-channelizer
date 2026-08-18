@@ -12,11 +12,21 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
     private readonly int _frames;
     private readonly float[] _prototype;
     private readonly FftwComplexPlan _backwardPlan;
-    private readonly ComplexF[] _fftInput;
     private readonly ComplexF[] _fftOutput;
+    private readonly int[] _uniqueBins;
+    private readonly int[] _channelRoutes;
+    private readonly ComplexF[][] _coarseStreams;
+    private readonly ComplexF[][] _rotatedStreams;
+    private readonly StreamingFineDecimator[] _fineDecimators;
     private readonly ComplexF[][] _outputs;
 
-    public FftwPfbEngine(ResolvedChannelizerPlan plan, int fftSize, int hopSize, int frames, float[] prototype)
+    public FftwPfbEngine(
+        ResolvedChannelizerPlan plan,
+        int fftSize,
+        int hopSize,
+        int frames,
+        float[] prototype,
+        PfbFineStageDesign[] fineStageDesigns)
         : base(plan)
     {
         _fftSize = fftSize;
@@ -24,10 +34,17 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         _frames = frames;
         _prototype = prototype;
         _backwardPlan = new FftwComplexPlan(fftSize, frames, FftwNative.Backward);
-        _fftInput = new ComplexF[checked(fftSize * frames)];
-        _fftOutput = new ComplexF[_fftInput.Length];
+        _fftOutput = new ComplexF[checked(fftSize * frames)];
+        _uniqueBins = plan.Channels.Select(channel => channel.CoarseBin).Distinct().ToArray();
+        _channelRoutes = plan.Channels.Select(channel => Array.IndexOf(_uniqueBins, channel.CoarseBin)).ToArray();
+        _coarseStreams = _uniqueBins.Select(_ => new ComplexF[frames]).ToArray();
+        _rotatedStreams = plan.Channels.Select(_ => new ComplexF[frames]).ToArray();
+        _fineDecimators = fineStageDesigns.Select(design => new StreamingFineDecimator(design, frames)).ToArray();
         _outputs = plan.Channels.Select(channel => new ComplexF[channel.OutputSamplesPerProcess]).ToArray();
     }
+
+    internal int UniqueBinCount => _uniqueBins.Length;
+    internal long GatheredBinValueCount { get; private set; }
 
     protected override void ProcessCore(ReadOnlySpan<ComplexF> input, long firstNewSampleIndex, IChannelOutputSink output)
     {
@@ -36,7 +53,7 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         {
             var anchor = checked(firstNewSampleIndex + ((long)(frame + 1) * _hopSize) - 1);
             var shift = PfbMath.Mod(anchor, _fftSize);
-            var fftInput = _fftInput.AsSpan(frame * _fftSize, _fftSize);
+            var fftInput = _backwardPlan.WritableInput.Slice(frame * _fftSize, _fftSize);
             var firstSegmentLength = _fftSize - shift;
             for (var destinationPhase = 0; destinationPhase < firstSegmentLength; destinationPhase++)
             {
@@ -51,32 +68,44 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
             }
         }
 
-        _backwardPlan.Execute(_fftInput, _fftOutput);
+        _backwardPlan.ExecuteFromInput(_fftOutput);
         for (var frame = 0; frame < _frames; frame++)
         {
             var bins = _fftOutput.AsSpan(frame * _fftSize, _fftSize);
-            for (var channelIndex = 0; channelIndex < Plan.Channels.Count; channelIndex++)
+            for (var uniqueIndex = 0; uniqueIndex < _uniqueBins.Length; uniqueIndex++)
             {
-                _outputs[channelIndex][frame] = bins[Plan.Channels[channelIndex].CoarseBin];
+                _coarseStreams[uniqueIndex][frame] = bins[_uniqueBins[uniqueIndex]];
+                GatheredBinValueCount++;
             }
         }
 
         for (var channelIndex = 0; channelIndex < Plan.Channels.Count; channelIndex++)
         {
             var channel = Plan.Channels[channelIndex];
-            var destination = _outputs[channelIndex].AsSpan();
+            var rotated = _rotatedStreams[channelIndex].AsSpan();
+            _coarseStreams[_channelRoutes[channelIndex]].CopyTo(rotated);
             var firstAnchor = firstNewSampleIndex + _hopSize - 1;
             ScalarRotator.RotateInPlace(
-                destination,
+                rotated,
                 channel.ResidualFrequencyHz,
                 Plan.InputSampleRateHz,
                 firstAnchor,
                 _hopSize);
+            var destination = _outputs[channelIndex].AsSpan();
+            _fineDecimators[channelIndex].Process(rotated, destination);
             output.Write(channel.ChannelId, destination);
         }
     }
 
     protected override void DisposeCore() => _backwardPlan.Dispose();
+
+    protected override void ResetCore()
+    {
+        foreach (var decimator in _fineDecimators)
+        {
+            decimator.Reset();
+        }
+    }
 
     private ComplexF FilterPhase(ReadOnlySpan<ComplexF> input, long spanAbsoluteStart, long anchor, int phase)
     {

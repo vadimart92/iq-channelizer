@@ -128,7 +128,8 @@ public sealed class StreamingFlowTests
     [Test]
     public void PfbContinuesAcrossProcessBoundaries()
     {
-        var request = ContractTests.Request(ChannelizerStrategy.Pfb, [ContractTests.Channel(5, 128)]) with
+        var channel = ContractTests.Channel(5, 128) with { PreferredOutputSampleRateHz = 256 };
+        var request = ContractTests.Request(ChannelizerStrategy.Pfb, [channel]) with
         {
             InputBlocks = new InputBlockConstraints(8, 8),
             Hints = new ChannelizerImplementationHints(PfbFftSize: 8, PfbHopSize: 4, PfbFramesPerBatch: 2, Simd: SimdPreference.Scalar)

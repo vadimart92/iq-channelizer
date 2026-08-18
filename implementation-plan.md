@@ -2663,13 +2663,13 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 | Phase 5: SIMD foundation | відкладено | `SimdPreference` contract існує; forced AVX2/AVX-512 відхиляються | Увесь SIMD scope; не починати без окремого дозволу власника repository |
 | Phase 6: FDC MVP | готово | Реальний multi-D overlap-save: per-channel power-of-two planner, aligned shared history/chunk/N, full `[history|chunk]` FFT once, causal Kaiser anti-alias response з alias budget і folded validation, grouped short backward plans, exact discard, explicit `1/N`, absolute phase, independent-DDC acceptance | Benchmark-profile cost model і ширші alias sweeps лишаються Крокам 10/12; forced hint залишається global override |
 | Phase 7: PFB algebra MVP | готово | Generic `K/H`; Conservative Kaiser `T=K*P`, `P>1` scalar branch equation; exact FIR group delay; independent double direct FIR+DFT oracle; explicit correction/pre-FFT shift equivalence; `H=K`, `H=K/2`, arbitrary H, signed-bin, non-aligned-origin і partition tests | SIMD kernels свідомо відкладені до окремого permission gate |
-| Phase 8: PFB production path | частково | Scalar FIR output is stored in corrected FFT order; filtered vectors only enter FFTW; batched transform | Direct write into unmanaged FFTW input, unique-bin gather/fan-out, per-channel fine filter/decimator, SIMD portion відкладена |
+| Phase 8: PFB production path | готово (scalar) | Filtered phase vectors пишуться прямо у FFTW-owned input; batched transform; precomputed unique-bin gather/fan-out; absolute residual rotation; per-channel validated stateful power-of-two fine FIR/decimator; exact counts/delays; Reset/no-allocation/independent-DDC tests | SIMD portion свідомо відкладена до окремого permission gate |
 | Phase 9: generalized PFB planner | не почато | Forced `K/H/FramesPerBatch` hints і прості defaults | Candidate enumeration, feasibility constraint, Conservative/FoldAware filters, folded response validation, non-2× planner selection |
 | Phase 10: performance tuning | не почато | No-allocation tests for FFTW execution and both engine `Process` paths | Profiling, stage timing, working-set analysis, measured optimization decisions |
 | Phase 11: selected-bin PFB | відкладено | Немає | Починати лише якщо full FFT benchmark показує потребу |
 | Phase 12: unified facade | частково | `ChannelizerFactory` exposes FDC/PFB through one API | Diagnostics, plan inspection completeness, reset/reconfiguration semantics, production examples |
 | Phase 13: Auto planner | відкладено | `Auto` явно throws `NotSupportedException` | Реалізувати лише після comparative benchmark profiles |
-| Signal tests | частково | 127 unit/integration tests: попередній scope плюс hand-checkable `P>1` branch equation, independent direct FIR+DFT equivalence для трьох hop modes і production PFB partition/amplitude fixture | PFB fine-decimation/DDC comparisons, full alias sweeps і golden artifacts |
+| Signal tests | частково | 130 unit/integration tests: попередній scope плюс shared-bin fan-out з heterogeneous fine factors, stateful fine-filter Reset, complex-tap independent-DDC equivalence і FFTW-owned writable-input execution | Generalized-planner matrix, full alias sweeps і golden artifacts |
 | Benchmarks | не почато | Третій project і console placeholder | BenchmarkDotNet dependency, FFTW/primitives/FDC/PFB/end-to-end suites, stored profiles and summary |
 | Diagnostics/docs | частково | README, ADR, versioned backend string, FFTW runtime/provenance/licensing document | Counters, stage timing, full production API example, acceptance report і фінальне release-license рішення |
 
@@ -2677,10 +2677,10 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 
 1. FDC planner використовує deterministic feasibility/shape policy, а не benchmark-profile cost model; performance-based candidate ranking належить Кроку 12.
 2. FDC Kaiser filters validated standalone і conservative-folded для кожного вибраного `D`, але повний multi-band blocker sweep належить Кроку 10.
-3. PFB використовує validated Conservative `P>1` prototype, але ще не має unique-bin fan-out, residual fine filter або fine decimation.
+3. PFB використовує validated Conservative `P>1` prototype, unique-bin fan-out і fine stages, але `K/H/FramesPerBatch` ще визначаються простими defaults/forced hints, а не generalized candidate planner.
 4. FDC і PFB `GroupDelayInputSamples` походять від фактичного FIR placement; fractional-delay variants поки не реалізовані.
-5. PFB і FDC використовують managed staging arrays навколо FFTW; wrapper копіює їх у/з native buffers.
-6. PFB не має fine filtering/decimation, а channels із однаковим bin ще не мають окремого precomputed unique-bin router.
+5. PFB напряму заповнює FFTW-owned input, але FFTW output і FDC path ще використовують managed staging arrays.
+6. Fine stages є scalar Kaiser implementations; cascaded half-band specialization залишається performance work, не correctness blocker.
 7. Default planner values є тимчасовими, а не benchmark-backed policy.
 8. Відсутність managed allocations уже протестована, але realtime performance не виміряна і не заявляється.
 
@@ -2704,6 +2704,6 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 
 ### 17.4. Найближчий рекомендований інкремент
 
-Кроки 1–7 перевірені та завершені. Наступний implementation increment — **Крок 8** з [`implementation-steps.md`](implementation-steps.md): завершити scalar PFB production flow з unique-bin routing/fan-out та per-channel residual filtering/fine decimation.
+Кроки 1–8 перевірені та завершені. Наступний implementation increment — **Крок 9** з [`implementation-steps.md`](implementation-steps.md): реалізувати generalized PFB candidate planner для `K/H/FramesPerBatch`, залишивши FoldAware disabled до окремого acceptance gate.
 
 Крок 0 залишається окремим housekeeping завданням: потрібно створити acceptance owner/fixture map і малий manifest у `artifacts/signal-validation/`.

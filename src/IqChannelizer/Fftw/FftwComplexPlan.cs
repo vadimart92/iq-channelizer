@@ -80,6 +80,14 @@ internal sealed class FftwComplexPlan : IDisposable
     internal int InputAlignmentClass => _input?.AlignmentClass ?? throw new ObjectDisposedException(nameof(FftwComplexPlan));
     internal int OutputAlignmentClass => _output?.AlignmentClass ?? throw new ObjectDisposedException(nameof(FftwComplexPlan));
     internal nint NativePlanAddress => _lease?.Plan ?? 0;
+    internal Span<ComplexF> WritableInput
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _input!.Span;
+        }
+    }
 
     public void Execute(ReadOnlySpan<ComplexF> input, Span<ComplexF> output)
     {
@@ -95,7 +103,18 @@ internal sealed class FftwComplexPlan : IDisposable
         }
 
         input.CopyTo(_input!.Span);
-        FftwNative.ExecuteDft(_lease!.Plan, _input.Pointer, _output!.Pointer);
+        ExecuteFromInput(output);
+    }
+
+    internal void ExecuteFromInput(Span<ComplexF> output)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (output.Length != ElementCount)
+        {
+            throw new ArgumentException($"Expected exactly {ElementCount} FFTW output values.", nameof(output));
+        }
+
+        FftwNative.ExecuteDft(_lease!.Plan, _input!.Pointer, _output!.Pointer);
         _output.ReadOnlySpan.CopyTo(output);
     }
 

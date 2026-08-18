@@ -19,7 +19,7 @@ internal static class PfbPrototypeDesign
     public static PfbPrototype Design(ChannelizerRequest request, int fftSize, int hopSize)
     {
         var passbandEdge = 0d;
-        var stopbandEdge = double.PositiveInfinity;
+        var stopbandEdge = 0d;
         var attenuation = 0d;
         var ripple = double.PositiveInfinity;
         foreach (var channel in request.Channels)
@@ -29,8 +29,9 @@ internal static class PfbPrototypeDesign
             var coarse = signedBin * request.InputSampleRateHz / fftSize;
             var residual = Math.Abs(channel.CenterFrequencyHz - coarse);
             passbandEdge = Math.Max(passbandEdge, residual + (channel.PassbandWidthHz / 2));
-            // A shared prototype must enter its stopband by the strictest (lowest) channel edge.
-            stopbandEdge = Math.Min(stopbandEdge, residual + ((channel.PassbandWidthHz + channel.TransitionWidthHz) / 2));
+            // The common analysis prototype admits the widest requested coarse-bin region;
+            // per-channel fine filters enforce narrower individual stop edges after fan-out.
+            stopbandEdge = Math.Max(stopbandEdge, residual + ((channel.PassbandWidthHz + channel.TransitionWidthHz) / 2));
             attenuation = Math.Max(attenuation, channel.StopbandAttenuationDb);
             ripple = Math.Min(ripple, channel.PassbandRippleDb);
         }

@@ -79,7 +79,8 @@ public sealed class PfbAlgebraTests
     [Test]
     public void ProductionPfbUsesConservativePGreaterThanOnePrototypeAcrossPartitions()
     {
-        var request = ContractTests.Request(ChannelizerStrategy.Pfb, [ContractTests.Channel(5, 128)]) with
+        var channel = ContractTests.Channel(5, 128) with { PreferredOutputSampleRateHz = 256 };
+        var request = ContractTests.Request(ChannelizerStrategy.Pfb, [channel]) with
         {
             InputBlocks = new InputBlockConstraints(8, 8),
             Hints = new ChannelizerImplementationHints(

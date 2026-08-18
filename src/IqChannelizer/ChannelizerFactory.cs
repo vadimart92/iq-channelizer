@@ -125,6 +125,9 @@ public static class ChannelizerFactory
 
         var outputRate = request.InputSampleRateHz / hopSize;
         var prototype = PfbPrototypeDesign.Design(request, fftSize, hopSize);
+        var fineStages = request.Channels
+            .Select(channel => PfbFineStageDesigner.Design(channel, outputRate, frames))
+            .ToArray();
         var channels = new ResolvedChannelPlan[request.Channels.Count];
         for (var index = 0; index < channels.Length; index++)
         {
@@ -133,12 +136,23 @@ public static class ChannelizerFactory
             var bin = PfbMath.Mod((long)Math.Round(requested.CenterFrequencyHz * fftSize / request.InputSampleRateHz), fftSize);
             var signedBin = bin <= fftSize / 2 ? bin : bin - fftSize;
             var coarse = signedBin * request.InputSampleRateHz / fftSize;
+            var fine = fineStages[index];
+            var finalOutputRate = outputRate / fine.DecimationFactor;
+            ValidateOutputRate(requested, finalOutputRate);
+            var totalDelay = AddInputSampleDelays(
+                prototype.GroupDelayInputSamples,
+                fine.GroupDelayCoarseSamples,
+                hopSize);
             channels[index] = ResolveChannel(
-                requested, coarse, bin, outputRate, frames, hopSize,
-                firstOutputOffset: checked((int)(hopSize - 1 - prototype.GroupDelayInputSamples.Numerator)),
+                requested, coarse, bin, finalOutputRate, frames / fine.DecimationFactor,
+                checked(hopSize * fine.DecimationFactor),
+                firstOutputOffset: checked(hopSize - 1 - ToIntegralSamples(totalDelay)),
                 pfbGroupId: 0, pfbFftSize: fftSize, pfbHopSize: hopSize,
                 prototypeFilterId: $"KaiserPfbK{fftSize}P{prototype.TapsPerPhase(fftSize)}",
-                groupDelay: prototype.GroupDelayInputSamples);
+                groupDelay: totalDelay,
+                fineDecimationFactor: fine.DecimationFactor,
+                fineFilterId: fine.FilterId,
+                coarseOutputRate: outputRate);
         }
 
         var requirements = new InputRequirements(prototype.Taps.Length - 1, chunk);
@@ -150,7 +164,8 @@ public static class ChannelizerFactory
 
         var nativeBytes = checked(16L * transformValues);
         var workingSetBytes = checked(nativeBytes + (16L * transformValues) +
-                                      (8L * frames * channels.Length) + (4L * prototype.Taps.Length));
+                                      (24L * frames * channels.Length) + (4L * prototype.Taps.Length) +
+                                      fineStages.Sum(stage => 16L * stage.Taps.Length));
         var plan = new ResolvedChannelizerPlan
         {
             Strategy = ChannelizerStrategy.Pfb,
@@ -172,7 +187,7 @@ public static class ChannelizerFactory
             TapsPerPhase = prototype.TapsPerPhase(fftSize),
             FilterDesignMode = "KaiserConservative"
         };
-        return new FftwPfbEngine(plan, fftSize, hopSize, frames, prototype.Taps);
+        return new FftwPfbEngine(plan, fftSize, hopSize, frames, prototype.Taps, fineStages);
     }
 
     private static ResolvedChannelPlan ResolveChannel(
@@ -188,7 +203,10 @@ public static class ChannelizerFactory
         int? pfbFftSize = null,
         int? pfbHopSize = null,
         string? prototypeFilterId = null,
-        RationalSampleOffset? groupDelay = null)
+        RationalSampleOffset? groupDelay = null,
+        int fineDecimationFactor = 1,
+        string fineFilterId = "Identity",
+        double? coarseOutputRate = null)
     {
         var warning = request.PreferredOutputSampleRateHz is { } preferred && outputRate < preferred
             ? $"Resolved output rate {outputRate:R} Hz is below the preferred rate {preferred:R} Hz."
@@ -203,24 +221,46 @@ public static class ChannelizerFactory
             StopbandAttenuationDb = request.StopbandAttenuationDb,
             PassbandRippleDb = request.PassbandRippleDb,
             CoarseCenterFrequencyHz = coarse,
-            CoarseOutputSampleRateHz = outputRate,
+            CoarseOutputSampleRateHz = coarseOutputRate ?? outputRate,
             ResidualFrequencyHz = request.CenterFrequencyHz - coarse,
             OutputSampleRateHz = outputRate,
             OutputSamplesPerProcess = outputCount,
             CoarseBin = bin,
-            DecimationFactor = inputSamplesPerOutput,
-            FineDecimationFactor = 1,
+            DecimationFactor = pfbHopSize ?? inputSamplesPerOutput,
+            FineDecimationFactor = fineDecimationFactor,
             ShortInverseFftLength = shortInverseFftLength,
             PfbGroupId = pfbGroupId,
             PfbFftSize = pfbFftSize,
             PfbHopSize = pfbHopSize,
             PrototypeFilterId = prototypeFilterId ?? (shortInverseFftLength.HasValue ? "LengthOneFdcFixture" : "RectangularPfbP1Fixture"),
-            FineFilterId = "Identity",
+            FineFilterId = fineFilterId,
             GroupDelayInputSamples = groupDelay ?? new RationalSampleOffset(0, 1),
             FirstOutputInputSampleOffset = new RationalSampleOffset(firstOutputOffset, 1),
             InputSamplesPerOutputSample = new RationalSampleOffset(inputSamplesPerOutput, 1),
             Warning = warning
         };
+    }
+
+    private static RationalSampleOffset AddInputSampleDelays(
+        RationalSampleOffset prototypeDelay,
+        RationalSampleOffset fineDelayCoarseSamples,
+        int hopSize)
+    {
+        var denominator = checked(prototypeDelay.Denominator * fineDelayCoarseSamples.Denominator);
+        var numerator = checked(
+            prototypeDelay.Numerator * fineDelayCoarseSamples.Denominator +
+            fineDelayCoarseSamples.Numerator * hopSize * prototypeDelay.Denominator);
+        return new RationalSampleOffset(numerator, denominator);
+    }
+
+    private static int ToIntegralSamples(RationalSampleOffset value)
+    {
+        if (value.Denominator != 1)
+        {
+            throw new NotSupportedException("The scalar PFB MVP requires integral total FIR delay.");
+        }
+
+        return checked((int)value.Numerator);
     }
 
     private static float[] PadFilterToHistory(float[] taps, int history)
