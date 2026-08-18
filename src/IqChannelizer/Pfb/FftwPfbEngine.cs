@@ -16,13 +16,13 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
     private readonly ComplexF[] _fftOutput;
     private readonly ComplexF[][] _outputs;
 
-    public FftwPfbEngine(ResolvedChannelizerPlan plan, int fftSize, int hopSize, int frames)
+    public FftwPfbEngine(ResolvedChannelizerPlan plan, int fftSize, int hopSize, int frames, float[] prototype)
         : base(plan)
     {
         _fftSize = fftSize;
         _hopSize = hopSize;
         _frames = frames;
-        _prototype = Enumerable.Repeat(1f / fftSize, fftSize).ToArray();
+        _prototype = prototype;
         _backwardPlan = new FftwComplexPlan(fftSize, frames, FftwNative.Backward);
         _fftInput = new ComplexF[checked(fftSize * frames)];
         _fftOutput = new ComplexF[_fftInput.Length];
@@ -41,17 +41,13 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
             for (var destinationPhase = 0; destinationPhase < firstSegmentLength; destinationPhase++)
             {
                 var phase = destinationPhase + shift;
-                var absoluteIndex = anchor - phase;
-                var spanIndex = checked((int)(absoluteIndex - spanAbsoluteStart));
-                fftInput[destinationPhase] = input[spanIndex] * _prototype[phase];
+                fftInput[destinationPhase] = FilterPhase(input, spanAbsoluteStart, anchor, phase);
             }
 
             for (var destinationPhase = firstSegmentLength; destinationPhase < _fftSize; destinationPhase++)
             {
                 var phase = destinationPhase - firstSegmentLength;
-                var absoluteIndex = anchor - phase;
-                var spanIndex = checked((int)(absoluteIndex - spanAbsoluteStart));
-                fftInput[destinationPhase] = input[spanIndex] * _prototype[phase];
+                fftInput[destinationPhase] = FilterPhase(input, spanAbsoluteStart, anchor, phase);
             }
         }
 
@@ -81,4 +77,17 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
     }
 
     protected override void DisposeCore() => _backwardPlan.Dispose();
+
+    private ComplexF FilterPhase(ReadOnlySpan<ComplexF> input, long spanAbsoluteStart, long anchor, int phase)
+    {
+        var accumulator = new ComplexF();
+        for (var tap = phase; tap < _prototype.Length; tap += _fftSize)
+        {
+            var absoluteIndex = anchor - tap;
+            var spanIndex = checked((int)(absoluteIndex - spanAbsoluteStart));
+            accumulator += input[spanIndex] * _prototype[tap];
+        }
+
+        return accumulator;
+    }
 }

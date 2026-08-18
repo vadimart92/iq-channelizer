@@ -17,10 +17,10 @@
 ## Остання перевірка
 
 - Дата: **2026-08-18**
-- Verified baseline commit: `58ec6a5`
-- Tracker update: `uncommitted Step 6 working tree` поверх `58ec6a5`
-- Release tests: **122 passed, 0 failed, 0 skipped** (повний restore + test)
-- Найближчий implementation step: **Крок 7 — generalized PFB algebra `P > 1`**
+- Verified baseline commit: `e969547`
+- Tracker update: `uncommitted Step 7 working tree` поверх `e969547`
+- Release tests: **127 passed, 0 failed, 0 skipped** (повний restore + test)
+- Найближчий implementation step: **Крок 8 — scalar PFB production flow**
 - Окремий housekeeping blocker: **Крок 0** ще не виконано, бо немає acceptance owner/fixture map і `artifacts/signal-validation/README.md`
 
 ## Зведена таблиця
@@ -33,9 +33,9 @@
 | 3. Scalar filter-design foundation | виконано | Commit history до `5bae632`; повторно перевірено зі Step 5 working tree, 117/117 tests |
 | 4. Independent reference DDC/toolkit | виконано | Commit `170dfe4`; 20 dedicated tests; повторно перевірено зі Step 5 working tree |
 | 5. FDC overlap-save MVP | виконано | Commit `58ec6a5`; full-frame FFT, Kaiser window, exact discard, DDC/signal acceptance |
-| 6. FDC planner/multiple-D | виконано | Uncommitted working tree поверх `58ec6a5`; per-channel D planner, shared N/forward FFT, grouped inverse plans; 122/122 tests |
-| 7. Generalized PFB algebra `P > 1` | наступний | Кроки 3–6 завершено; Conservative production prototype ще не реалізовано |
-| 8. Scalar PFB production flow | не почато | Залежить від Кроків 4 і 7 |
+| 6. FDC planner/multiple-D | виконано | Commit `e969547`; per-channel D planner, shared N/forward FFT, grouped inverse plans; 122/122 tests на момент коміту |
+| 7. Generalized PFB algebra `P > 1` | виконано | Uncommitted working tree поверх `e969547`; Conservative prototype, direct oracle, timing/partition tests; 127/127 tests |
+| 8. Scalar PFB production flow | наступний | P>1 FIR готовий; потрібні unique-bin routing, fan-out і per-channel fine decimation |
 | 9. Generalized PFB planner | не почато | FoldAware лишається disabled |
 | 10. Correctness/integration suite | не почато | Розширюється після production flows |
 | 11. Diagnostics/observability | не почато | Не логувати в hot path |
@@ -134,7 +134,7 @@
 
 ### Крок 6. Додати FDC planner і multiple-D groups
 
-**Статус: виконано.** Uncommitted working tree поверх `58ec6a5`; 122/122 Release tests.
+**Статус: виконано.** Commit `e969547`; 122/122 Release tests на момент коміту.
 
 - Enumerate power-of-two `D` candidates та bounded/smooth `N` candidates.
 - Узгодити engine-wide history/alignment для різних `D`.
@@ -151,7 +151,7 @@
 
 ### Крок 7. Завершити scalar generalized PFB algebra для `P > 1`
 
-**Статус: наступний.**
+**Статус: виконано.** Uncommitted working tree поверх `e969547`; 127/127 Release tests.
 
 - Замінити `P = 1` rectangular fixture на Conservative prototype з `T = K * P`.
 - Реалізувати scalar branch equation `h[p+qK] * x[r-(p+qK)]` і незалежний direct FIR+DFT oracle.
@@ -160,9 +160,15 @@
 
 **Done:** PFB branch output, direct FIR+DFT, explicit correction і shifted FFT збігаються в установленій tolerance.
 
+**Evidence:** `PfbPrototypeDesign.cs`, generalized FIR у `FftwPfbEngine.cs` і `PfbMath.cs`, independent `PfbDirectReference.cs`, `PfbAlgebraTests.cs`, оновлені `ChannelizerFactory.cs`, `ContractTests.cs` і `README.md`.
+
+**Design decisions:** common Conservative prototype визначає pass/stop edges з фактичних residual offsets і channel widths, додає conservative alias-image attenuation budget та проходить folded validation для hop `H`. Kaiser taps нормалізовані до DC gain 1 і padded до `T=K*P`; exact group delay походить від позиції непорожнього symmetric FIR усередині padding. Production scalar kernel обчислює `sum_q h[p+qK]x[r-(p+qK)]` без raw-history copy та одразу пише у circularly shifted FFT input. Окремий oracle виконує direct double-precision FIR+DFT за absolute input indices й не використовує production phase-vector/correction math.
+
+**Done підтверджено:** tiny `K=4,P=2` fixture перевіряє branch equation вручну; `K=4,P=3` fixtures для `H=K`, `H=K/2` і `H=3` звіряють direct oracle, explicit correction і circular shift для всіх positive/negative bins та non-aligned firstNew. Production `P>1` engine зберігає amplitude і continuity між Process partitions; попередні arbitrary-hop і no-allocation tests зелені.
+
 ### Крок 8. Завершити scalar PFB production flow
 
-**Статус: не почато.**
+**Статус: наступний.**
 
 - Писати filtered phase vectors безпосередньо в FFTW-owned input або надати validated no-copy writable view; raw IQ history туди не копіювати.
 - Додати precomputed unique-bin router і fan-out для кількох channels одного bin.

@@ -136,11 +136,17 @@ public sealed class ContractTests
         {
             Assert.That(engine.Plan.OversamplingRatio, Is.EqualTo(new RationalSampleOffset(8, 3)));
             Assert.That(engine.Plan.PfbPhaseShiftMode, Is.EqualTo("PreFftCircularShift"));
-            Assert.That(engine.Plan.TapsPerPhase, Is.EqualTo(1));
+            Assert.That(engine.Plan.TapsPerPhase, Is.GreaterThan(1));
+            Assert.That(engine.InputRequirements.HistorySize,
+                Is.EqualTo((engine.Plan.TapsPerPhase!.Value * 8) - 1));
             Assert.That(resolved.PfbGroupId, Is.EqualTo(0));
             Assert.That(resolved.PfbFftSize, Is.EqualTo(8));
             Assert.That(resolved.PfbHopSize, Is.EqualTo(3));
-            Assert.That(resolved.FirstOutputInputSampleOffset, Is.EqualTo(new RationalSampleOffset(2, 1)));
+            Assert.That(resolved.GroupDelayInputSamples.Numerator, Is.GreaterThan(0));
+            Assert.That(resolved.FirstOutputInputSampleOffset,
+                Is.EqualTo(new RationalSampleOffset(
+                    2 - resolved.GroupDelayInputSamples.Numerator,
+                    resolved.GroupDelayInputSamples.Denominator)));
             Assert.That(resolved.InputSamplesPerOutputSample, Is.EqualTo(new RationalSampleOffset(3, 1)));
         });
     }

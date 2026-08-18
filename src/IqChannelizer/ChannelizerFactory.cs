@@ -124,6 +124,7 @@ public static class ChannelizerFactory
         }
 
         var outputRate = request.InputSampleRateHz / hopSize;
+        var prototype = PfbPrototypeDesign.Design(request, fftSize, hopSize);
         var channels = new ResolvedChannelPlan[request.Channels.Count];
         for (var index = 0; index < channels.Length; index++)
         {
@@ -134,10 +135,13 @@ public static class ChannelizerFactory
             var coarse = signedBin * request.InputSampleRateHz / fftSize;
             channels[index] = ResolveChannel(
                 requested, coarse, bin, outputRate, frames, hopSize,
-                firstOutputOffset: hopSize - 1, pfbGroupId: 0, pfbFftSize: fftSize, pfbHopSize: hopSize);
+                firstOutputOffset: checked((int)(hopSize - 1 - prototype.GroupDelayInputSamples.Numerator)),
+                pfbGroupId: 0, pfbFftSize: fftSize, pfbHopSize: hopSize,
+                prototypeFilterId: $"KaiserPfbK{fftSize}P{prototype.TapsPerPhase(fftSize)}",
+                groupDelay: prototype.GroupDelayInputSamples);
         }
 
-        var requirements = new InputRequirements(fftSize - 1, chunk);
+        var requirements = new InputRequirements(prototype.Taps.Length - 1, chunk);
         var transformValues = checked((long)fftSize * frames);
         if (transformValues > int.MaxValue)
         {
@@ -146,7 +150,7 @@ public static class ChannelizerFactory
 
         var nativeBytes = checked(16L * transformValues);
         var workingSetBytes = checked(nativeBytes + (16L * transformValues) +
-                                      (8L * frames * channels.Length) + (4L * fftSize));
+                                      (8L * frames * channels.Length) + (4L * prototype.Taps.Length));
         var plan = new ResolvedChannelizerPlan
         {
             Strategy = ChannelizerStrategy.Pfb,
@@ -159,16 +163,16 @@ public static class ChannelizerFactory
             FftwThreadCount = 1,
             AlignedBufferBytes = nativeBytes,
             EstimatedWorkingSetBytes = workingSetBytes,
-            Warnings = Array.AsReadOnly(["PFB currently uses a one-tap-per-phase rectangular algebra fixture, not a production prototype filter."]),
+            Warnings = Array.Empty<string>(),
             FftSize = fftSize,
             HopSize = hopSize,
             FramesPerBatch = frames,
             OversamplingRatio = new RationalSampleOffset(fftSize, hopSize),
             PfbPhaseShiftMode = "PreFftCircularShift",
-            TapsPerPhase = 1,
-            FilterDesignMode = "RectangularAlgebraFixture"
+            TapsPerPhase = prototype.TapsPerPhase(fftSize),
+            FilterDesignMode = "KaiserConservative"
         };
-        return new FftwPfbEngine(plan, fftSize, hopSize, frames);
+        return new FftwPfbEngine(plan, fftSize, hopSize, frames, prototype.Taps);
     }
 
     private static ResolvedChannelPlan ResolveChannel(

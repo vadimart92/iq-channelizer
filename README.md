@@ -2,7 +2,7 @@
 
 Streaming complex-IQ channelization with interchangeable FDC and generalized PFB strategies.
 
-The current milestone provides the public request/plan/streaming contracts, deterministic planning, a multi-decimation FFTW overlap-save FDC with one shared forward FFT, grouped short inverse transforms and validated Kaiser anti-alias filters, generalized batched `K/H` PFB with absolute frame correction, scalar reference transforms, and standalone filter-design/response/folding primitives. The PFB still uses an explicitly identified one-tap-per-phase fixture; production PFB filters, SIMD, `Auto`, and realtime claims are not included yet.
+The current milestone provides the public request/plan/streaming contracts, deterministic planning, a multi-decimation FFTW overlap-save FDC with one shared forward FFT, grouped short inverse transforms and validated Kaiser anti-alias filters, plus a generalized batched `K/H` PFB with a Conservative `P > 1` Kaiser prototype and absolute frame correction. Scalar reference transforms and standalone filter-design/response/folding primitives are included. PFB unique-bin routing/fine decimation, SIMD, `Auto`, and realtime claims are not included yet.
 
 The Windows x64 FFTW binary is copied beside consuming applications automatically. FFTW plans and aligned native buffers are created once with the engine and disposed with it; no planning occurs in `Process`.
 
@@ -29,6 +29,6 @@ The caller owns the ring buffer and supplies exactly `[HistorySize | ChunkSize]`
 
 Without a forced `FdcDecimationFactor`, the FDC planner selects a power-of-two decimation per channel from its occupied bandwidth and minimum/preferred output rates, aligns shared history/chunk requirements to the largest selected factor, and groups channels with equal short-IFFT lengths. A forced factor remains a global deterministic override and is validated for every channel.
 
-`ResolvedChannelizerPlan` contains immutable engine and per-channel rates, FFT/PFB dimensions, exact output counts, group delay, and the first-output offset in input-sample units. The offset is relative to `firstNewSampleIndex`: for the causal symmetric FDC FIR it is `-GroupDelayInputSamples`; for the one-tap-per-phase PFB fixture it is `HopSize - 1`. Plan warnings identify remaining non-production fixtures.
+`ResolvedChannelizerPlan` contains immutable engine and per-channel rates, FFT/PFB dimensions, exact output counts, group delay, and the first-output offset in input-sample units. The offset is relative to `firstNewSampleIndex`: for the causal symmetric FDC FIR it is `-GroupDelayInputSamples`; for the PFB prototype it is `HopSize - 1 - GroupDelayInputSamples`.
 
 After a stream discontinuity, call `Reset(nextFirstNewSampleIndex)` and provide fresh history (normally zero-filled at a new logical stream boundary) on the next `Process`. `Reset` establishes the exact absolute index accepted by that next call; it does not manufacture history. Calling either `Process` or `Reset` after disposal throws `ObjectDisposedException`.
