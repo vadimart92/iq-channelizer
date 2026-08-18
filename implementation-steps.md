@@ -17,10 +17,10 @@
 ## Остання перевірка
 
 - Дата: **2026-08-18**
-- Verified baseline commit: `5b7492d`
-- Tracker update: `uncommitted Step 3 working tree` поверх `5b7492d`
-- Release tests: **90 passed, 0 failed, 0 skipped**
-- Найближчий implementation step: **Крок 4 — independent reference DDC і signal toolkit**
+- Verified baseline commit: `5bae632`
+- Tracker update: `uncommitted Step 4 working tree` поверх `5bae632`
+- Release tests: **110 passed, 0 failed, 0 skipped** (повний restore + test)
+- Найближчий implementation step: **Крок 5 — FDC overlap-save MVP**
 - Окремий housekeeping blocker: **Крок 0** ще не виконано, бо немає acceptance owner/fixture map і `artifacts/signal-validation/README.md`
 
 ## Зведена таблиця
@@ -30,9 +30,9 @@
 | 0. Baseline та acceptance map | не виконано | Release baseline відтворюється, але manifest і owner/fixture mapping відсутні |
 | 1. Contracts, validation, timing | виконано | Commit `ced2747`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
 | 2. FFTW runtime | виконано | Commit `3eb2c62`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
-| 3. Scalar filter-design foundation | виконано | Uncommitted working tree поверх `5b7492d`; 30 new tests, 90/90 total |
-| 4. Independent reference DDC/toolkit | наступний | Крок 3 завершено; implementation ще не почато |
-| 5. FDC overlap-save MVP | не почато | Не починати до Кроків 3–4 |
+| 3. Scalar filter-design foundation | виконано | Commit history до `5bae632`; повторно перевірено зі Step 4 working tree, 110/110 tests |
+| 4. Independent reference DDC/toolkit | виконано | Uncommitted working tree поверх `5bae632`; 20 new tests, 110/110 total |
+| 5. FDC overlap-save MVP | наступний | Кроки 3–4 завершено; production overlap-save implementation ще не почато |
 | 6. FDC planner/multiple-D | не почато | Залежить від Кроку 5 |
 | 7. Generalized PFB algebra `P > 1` | не почато | Conservative prototype потребує Кроку 3 |
 | 8. Scalar PFB production flow | не почато | Залежить від Кроків 4 і 7 |
@@ -86,7 +86,7 @@
 
 ### Крок 3. Реалізувати scalar filter-design foundation
 
-**Статус: виконано.** Uncommitted working tree поверх `5b7492d`; 90/90 Release tests.
+**Статус: виконано.** Commit history до `5bae632`; повторно перевірено зі Step 4 working tree, 110/110 Release tests.
 
 - Додати `LowPassFilterSpec`, deterministic Kaiser-windowed sinc designer у `double`, normalized `float` taps і metadata.
 - Додати standalone complex frequency-response evaluator.
@@ -102,17 +102,21 @@
 
 ### Крок 4. Додати незалежний reference DDC і signal toolkit
 
-**Статус: наступний.**
+**Статус: виконано.** Uncommitted working tree поверх `5bae632`; 110/110 Release tests.
 
 - Реалізувати double-precision input-rate NCO, FIR і decimator без reuse критичної FDC/PFB математики.
 - Додати deterministic generators: bin-centered/off-bin tones, two-tone, blocker, chirp, AM, seeded noise, impulse і zero input.
 - Реалізувати rational timing alignment та metrics: RMS, max complex error, amplitude, phase, drift, leakage.
 
-**Done:** reference DDC має власні unit tests і може бути oracle для обох engines на коротких deterministic streams.
+**Evidence:** `ReferenceDdc.cs`, `DeterministicSignals.cs`, `SignalAnalysis.cs`, `ReferenceDdcTests.cs`, `SignalToolkitTests.cs`.
+
+**Design decisions:** reference path використовує `System.Numerics.Complex`, input-rate absolute-index NCO, власну double-precision causal convolution і general integer decimation; він не викликає production `ScalarFir`, rotator, FDC або PFB math. FIR timestamps задаються rational center-of-support offsets. Timing aligner порівнює exact rational coordinates без floating-point rounding. Metrics містять direct RMS/max complex error, best-fit complex gain amplitude/phase, unwrapped phase drift і normalized residual leakage. Генератори покривають bin/off-bin tone через довільну frequency, two-tone/blocker, chirp, AM, seeded complex Gaussian noise, impulse і zero input.
+
+**Done підтверджено:** 20 unit tests перевіряють absolute-origin mixing, hand-checkable FIR/decimation/phase, rational half-sample alignment, generator determinism/continuity/validation і відомі amplitude/phase/drift/leakage metrics; module придатний як oracle для коротких deterministic streams обох engines.
 
 ### Крок 5. Перетворити FDC skeleton на справжній overlap-save MVP
 
-**Статус: не почато.**
+**Статус: наступний.**
 
 - Спроєктувати anti-alias FIR/window для одного forced `D` і визначити `HistorySize = filterLength - 1`.
 - Гарантувати `N = HistorySize + ChunkSize`, divisibility/alignment і `ChunkSize <= MaxChunkSize`.
