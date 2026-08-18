@@ -17,10 +17,10 @@
 ## Остання перевірка
 
 - Дата: **2026-08-18**
-- Verified baseline commit: `e969547`
-- Tracker update: `uncommitted Step 7 working tree` поверх `e969547`
-- Release tests: **127 passed, 0 failed, 0 skipped** (повний restore + test)
-- Найближчий implementation step: **Крок 8 — scalar PFB production flow**
+- Verified implementation commit: `ecbf805`
+- Tracker update: `tracker sync commit` поверх `ecbf805`
+- Release tests: **130 passed, 0 failed, 0 skipped** (повний restore + test)
+- Найближчий implementation step: **Крок 9 — generalized PFB planner**
 - Окремий housekeeping blocker: **Крок 0** ще не виконано, бо немає acceptance owner/fixture map і `artifacts/signal-validation/README.md`
 
 ## Зведена таблиця
@@ -34,9 +34,9 @@
 | 4. Independent reference DDC/toolkit | виконано | Commit `170dfe4`; 20 dedicated tests; повторно перевірено зі Step 5 working tree |
 | 5. FDC overlap-save MVP | виконано | Commit `58ec6a5`; full-frame FFT, Kaiser window, exact discard, DDC/signal acceptance |
 | 6. FDC planner/multiple-D | виконано | Commit `e969547`; per-channel D planner, shared N/forward FFT, grouped inverse plans; 122/122 tests на момент коміту |
-| 7. Generalized PFB algebra `P > 1` | виконано | Uncommitted working tree поверх `e969547`; Conservative prototype, direct oracle, timing/partition tests; 127/127 tests |
-| 8. Scalar PFB production flow | наступний | P>1 FIR готовий; потрібні unique-bin routing, fan-out і per-channel fine decimation |
-| 9. Generalized PFB planner | не почато | FoldAware лишається disabled |
+| 7. Generalized PFB algebra `P > 1` | виконано | Commit `29c9771`; Conservative prototype, direct oracle, timing/partition tests; 127/127 tests на момент коміту |
+| 8. Scalar PFB production flow | виконано | Commit `ecbf805`; native writable input, unique-bin fan-out, stateful fine decimation/DDC; 130/130 tests |
+| 9. Generalized PFB planner | наступний | Scalar production flow готовий; FoldAware лишається disabled |
 | 10. Correctness/integration suite | не почато | Розширюється після production flows |
 | 11. Diagnostics/observability | не почато | Не логувати в hot path |
 | 12. BenchmarkDotNet suite | не почато | Використати наявний третій project |
@@ -151,7 +151,7 @@
 
 ### Крок 7. Завершити scalar generalized PFB algebra для `P > 1`
 
-**Статус: виконано.** Uncommitted working tree поверх `e969547`; 127/127 Release tests.
+**Статус: виконано.** Commit `29c9771`; 127/127 Release tests на момент коміту.
 
 - Замінити `P = 1` rectangular fixture на Conservative prototype з `T = K * P`.
 - Реалізувати scalar branch equation `h[p+qK] * x[r-(p+qK)]` і незалежний direct FIR+DFT oracle.
@@ -168,7 +168,7 @@
 
 ### Крок 8. Завершити scalar PFB production flow
 
-**Статус: наступний.**
+**Статус: виконано.** Commit `ecbf805`; 130/130 Release tests.
 
 - Писати filtered phase vectors безпосередньо в FFTW-owned input або надати validated no-copy writable view; raw IQ history туди не копіювати.
 - Додати precomputed unique-bin router і fan-out для кількох channels одного bin.
@@ -177,9 +177,15 @@
 
 **Done:** PFB проходить shared-bin, fine-decimation, no-duplicate-history, no-allocation і independent-DDC tests.
 
+**Evidence:** writable native input у `FftwComplexPlan.cs`, precomputed router/fan-out і direct rotated native stores у `FftwPfbEngine.cs`, `PfbFineStage.cs`, complex-tap overload у `ReferenceDdc.cs`, `PfbProductionFlowTests.cs`, writable-input test у `FftwTests.cs`, оновлені factory/contract/streaming tests і `README.md`.
+
+**Design decisions:** PFB phase FIR пише без managed input staging прямо у validated FFTW-owned span; один precomputed route відповідає кожному channel, а coarse stream збирається один раз на unique bin/frame. Fine planner вибирає найбільший feasible power-of-two factor, що ділить `FramesPerBatch`, з урахуванням occupied/minimum/preferred rate. Після absolute residual rotation stateful scalar fine FIR/decimator використовує fixed phase 0; divisibility гарантує безперервність phase між Process calls, Reset очищає history. Total group delay, final rate, stride, filter ID та output count записуються per channel. Independent DDC використовує mathematically equivalent complex-modulated prototype taps для coarse-before-residual convention.
+
+**Done підтверджено:** shared-bin fixture збирає один bin для двох каналів, застосовує `Dfine=8` і `Dfine=2`, зберігає request order/exact counts і після FIR warmup збігається з independent DDC. Окремо перевірено Reset state, FFTW-owned writable input та попередній steady-state zero-allocation contract.
+
 ### Крок 9. Реалізувати generalized PFB planner
 
-**Статус: не почато.**
+**Статус: наступний.**
 
 - Enumerate valid `K`, integer `H` і `FramesPerBatch` під chunk bounds.
 - Перевіряти single-bin feasibility, residual range, output-rate constraints і folded response.
