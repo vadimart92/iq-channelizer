@@ -119,6 +119,18 @@ public sealed class FilterDesignTests
         });
     }
 
+    [TestCase(511, -512, 1024, -1)]
+    [TestCase(-511, 512, 1024, 1)]
+    [TestCase(-512, -512, 1024, 0)]
+    public void FrequencyDifferenceUsesTheCanonicalPeriodicInterval(
+        double frequency,
+        double reference,
+        double sampleRate,
+        double expected) =>
+        Assert.That(
+            FrequencyBinMath.WrappedDifference(frequency, reference, sampleRate),
+            Is.EqualTo(expected));
+
     [Test]
     public void DenseResponseCoversSignedNyquistInterval()
     {
@@ -130,6 +142,59 @@ public sealed class FilterDesignTests
             Assert.That(response.MaximumFrequencyHz, Is.EqualTo(4_000));
             Assert.That(response.SampleCount, Is.EqualTo(17));
             Assert.That(response.Values.Span.ToArray().All(value => Math.Abs(value.Magnitude - 1) < 1e-12), Is.True);
+        });
+    }
+
+    [Test]
+    public void PowerOfTwoDenseFftMatchesDirectEvaluationEvenWhenTapsFold()
+    {
+        var taps = Enumerable.Range(0, 31)
+            .Select(index => (float)(Math.Sin((index + 1) * 0.37) / 31))
+            .ToArray();
+        var response = FrequencyResponseEvaluator.EvaluateDense(taps, 8_000, 17);
+
+        for (var index = 0; index < response.SampleCount; index++)
+        {
+            var frequency = response.MinimumFrequencyHz + (index * response.FrequencyStepHz);
+            var expected = FrequencyResponseEvaluator.Evaluate(taps, frequency, response.SampleRateHz);
+            var actual = response.Values.Span[index];
+            Assert.Multiple(() =>
+            {
+                Assert.That(actual.Real, Is.EqualTo(expected.Real).Within(2e-12), $"real bin {index}");
+                Assert.That(actual.Imaginary, Is.EqualTo(expected.Imaginary).Within(2e-12), $"imaginary bin {index}");
+            });
+        }
+    }
+
+    [Test]
+    public void ConservativeValidationResolvesANarrowPeakBetweenTheRequestedGridPoints()
+    {
+        const int tapCount = 513;
+        const int requestedGridPoints = 257;
+        const double sampleRate = 1;
+        var peakFrequency = 0.25 + (0.5 / (requestedGridPoints - 1));
+        var center = (tapCount - 1) / 2d;
+        var taps = new float[tapCount];
+        for (var index = 0; index < taps.Length; index++)
+        {
+            taps[index] = (float)(2d / tapCount * Math.Cos(2 * Math.PI * peakFrequency * (index - center)));
+        }
+
+        var response = FrequencyResponseEvaluator.EvaluateDenseConservative(
+            taps,
+            sampleRate,
+            requestedGridPoints);
+        var folded = AliasedResponseEvaluator.EvaluateConservative(
+            response,
+            decimationFactor: 2,
+            outputPassbandEdgeHz: 0.5 - peakFrequency,
+            evaluationPointCount: 2);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.SampleCount, Is.GreaterThan(requestedGridPoints));
+            Assert.That(folded.WorstAliasMagnitude, Is.GreaterThan(0.95));
+            Assert.That(folded.WorstAliasAttenuationDb, Is.LessThan(1));
         });
     }
 

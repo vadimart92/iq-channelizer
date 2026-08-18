@@ -5,11 +5,7 @@ namespace IqChannelizer.Pfb;
 
 internal static class PfbMath
 {
-    public static int Mod(long value, int modulus)
-    {
-        var result = (int)(value % modulus);
-        return result < 0 ? result + modulus : result;
-    }
+    public static int Mod(long value, int modulus) => FrequencyBinMath.Mod(value, modulus);
 
     public static void ApplyExplicitCorrection(ReadOnlySpan<ComplexF> phaseVector, long frameAnchor, Span<ComplexF> output)
     {

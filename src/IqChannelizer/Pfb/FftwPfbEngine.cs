@@ -93,7 +93,14 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
                 _hopSize);
             var destination = _outputs[channelIndex].AsSpan();
             _fineDecimators[channelIndex].Process(rotated, destination);
-            output.Write(channel.ChannelId, destination);
+        }
+
+        // Advance every channel's state before exposing any output. If a sink
+        // throws, StreamingEngineBase faults the engine until Reset so partially
+        // emitted blocks can never be followed by silently divergent DSP state.
+        for (var channelIndex = 0; channelIndex < Plan.Channels.Count; channelIndex++)
+        {
+            output.Write(Plan.Channels[channelIndex].ChannelId, _outputs[channelIndex]);
         }
     }
 

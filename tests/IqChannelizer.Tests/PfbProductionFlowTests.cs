@@ -104,6 +104,71 @@ public sealed class PfbProductionFlowTests
         Assert.That(sink.Blocks.Single().Samples.All(sample => sample.Magnitude == 0), Is.True);
     }
 
+    [Test]
+    public void FineFactorOneStillAppliesTheRequestedPerChannelFilter()
+    {
+        var request = new ChannelizerRequest(
+            SampleRate,
+            [
+                new ChannelRequest(1, 100, 20, 10, 80, 0.1, PreferredOutputSampleRateHz: 400),
+                new ChannelRequest(2, 128, 300, 50, 80, 0.1)
+            ],
+            ChannelizerStrategy.Pfb,
+            new InputBlockConstraints(16, 16),
+            new ChannelizerImplementationHints(
+                PfbFftSize: FftSize,
+                PfbHopSize: HopSize,
+                PfbFramesPerBatch: Frames,
+                Simd: SimdPreference.Scalar));
+        var fine = PfbFineStageDesigner.Design(request.Channels[0], SampleRate / HopSize, Frames);
+        using var engine = ChannelizerFactory.Create(request);
+        var warmupBlocks = 2 + ((fine.Taps.Length - 1 + Frames - 1) / Frames);
+        const long initialFirstNew = 10_000;
+        TestSink? finalSink = null;
+
+        for (var block = 0; block < warmupBlocks; block++)
+        {
+            var firstNew = initialFirstNew + ((long)block * engine.InputRequirements.ChunkSize);
+            var input = DeterministicSignals.Tone(
+                engine.InputRequirements.InputSize,
+                180,
+                SampleRate,
+                firstNew - engine.InputRequirements.HistorySize);
+            finalSink = new TestSink();
+            engine.Process(input, firstNew, finalSink);
+        }
+
+        var resolved = engine.Plan.Channels[0];
+        var samples = finalSink!.Blocks[0].Samples;
+        var rms = Math.Sqrt(samples.Average(sample => sample.Magnitude * sample.Magnitude));
+        Assert.Multiple(() =>
+        {
+            Assert.That(resolved.FineDecimationFactor, Is.EqualTo(1));
+            Assert.That(resolved.FineFilterId, Does.StartWith("KaiserFineD1"));
+            Assert.That(rms, Is.LessThan(2e-4));
+        });
+    }
+
+    [Test]
+    public void FramesPerBatchDoesNotChangeLogicalOutput()
+    {
+        var channel = new ChannelRequest(7, 123.25, 120, 80, 50, 0.2);
+        var smallRequest = PartitionRequest(channel, framesPerBatch: 4);
+        var largeRequest = PartitionRequest(channel, framesPerBatch: 8);
+
+        var smallBlocks = ProcessContinuousTone(smallRequest, blockCount: 12, firstNewSampleIndex: 20_000);
+        var largeBlocks = ProcessContinuousTone(largeRequest, blockCount: 6, firstNewSampleIndex: 20_000);
+
+        Assert.That(smallBlocks, Has.Length.EqualTo(largeBlocks.Length));
+        for (var index = 0; index < smallBlocks.Length; index++)
+        {
+            var error = new Complex(
+                smallBlocks[index].Real - largeBlocks[index].Real,
+                smallBlocks[index].Imaginary - largeBlocks[index].Imaginary);
+            Assert.That(error.Magnitude, Is.LessThan(2e-5), $"sample {index}");
+        }
+    }
+
     private static ChannelizerRequest Request() => new(
         SampleRate,
         [
@@ -117,6 +182,40 @@ public sealed class PfbProductionFlowTests
             PfbHopSize: HopSize,
             PfbFramesPerBatch: Frames,
             Simd: SimdPreference.Scalar));
+
+    private static ChannelizerRequest PartitionRequest(ChannelRequest channel, int framesPerBatch) => new(
+        SampleRate,
+        [channel],
+        ChannelizerStrategy.Pfb,
+        new InputBlockConstraints(framesPerBatch * HopSize, framesPerBatch * HopSize),
+        new ChannelizerImplementationHints(
+            PfbFftSize: FftSize,
+            PfbHopSize: HopSize,
+            PfbFramesPerBatch: framesPerBatch,
+            Simd: SimdPreference.Scalar));
+
+    private static ComplexF[] ProcessContinuousTone(
+        ChannelizerRequest request,
+        int blockCount,
+        long firstNewSampleIndex)
+    {
+        using var engine = ChannelizerFactory.Create(request);
+        var result = new List<ComplexF>();
+        for (var block = 0; block < blockCount; block++)
+        {
+            var firstNew = firstNewSampleIndex + ((long)block * engine.InputRequirements.ChunkSize);
+            var input = DeterministicSignals.Tone(
+                engine.InputRequirements.InputSize,
+                123.25,
+                SampleRate,
+                firstNew - engine.InputRequirements.HistorySize);
+            var sink = new TestSink();
+            engine.Process(input, firstNew, sink);
+            result.AddRange(sink.Blocks.Single().Samples);
+        }
+
+        return result.ToArray();
+    }
 
     private static Complex[] ConvolveAtHop(float[] prototype, float[] fine, int hop, double residualFrequencyHz)
     {

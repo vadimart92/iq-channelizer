@@ -6,6 +6,7 @@ internal abstract class StreamingEngineBase : IStreamingChannelizer
 {
     private bool _hasExpectedIndex;
     private long _expectedFirstNewSampleIndex;
+    private bool _faulted;
     private bool _disposed;
 
     protected StreamingEngineBase(ResolvedChannelizerPlan plan)
@@ -21,6 +22,11 @@ internal abstract class StreamingEngineBase : IStreamingChannelizer
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(output);
+        if (_faulted)
+        {
+            throw new InvalidOperationException("The channelizer is faulted after a failed Process call. Call Reset before processing more input.");
+        }
+
         if (historyAndChunk.Length != InputRequirements.InputSize)
         {
             throw new ArgumentException($"Expected exactly {InputRequirements.InputSize} input samples.", nameof(historyAndChunk));
@@ -28,11 +34,20 @@ internal abstract class StreamingEngineBase : IStreamingChannelizer
 
         if (_hasExpectedIndex && firstNewSampleIndex != _expectedFirstNewSampleIndex)
         {
-            throw new InvalidOperationException($"Input discontinuity: expected { _expectedFirstNewSampleIndex}, got {firstNewSampleIndex}.");
+            throw new InvalidOperationException($"Input discontinuity: expected {_expectedFirstNewSampleIndex}, got {firstNewSampleIndex}.");
         }
 
         var nextFirstNewSampleIndex = checked(firstNewSampleIndex + InputRequirements.ChunkSize);
-        ProcessCore(historyAndChunk, firstNewSampleIndex, output);
+        try
+        {
+            ProcessCore(historyAndChunk, firstNewSampleIndex, output);
+        }
+        catch
+        {
+            _faulted = true;
+            throw;
+        }
+
         _expectedFirstNewSampleIndex = nextFirstNewSampleIndex;
         _hasExpectedIndex = true;
     }
@@ -41,6 +56,7 @@ internal abstract class StreamingEngineBase : IStreamingChannelizer
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ResetCore();
+        _faulted = false;
         _expectedFirstNewSampleIndex = nextFirstNewSampleIndex;
         _hasExpectedIndex = true;
     }

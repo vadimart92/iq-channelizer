@@ -90,21 +90,22 @@ public sealed class PfbAlgebraTests
                 Simd: SimdPreference.Scalar)
         };
         using var engine = ChannelizerFactory.Create(request);
-        var firstNew = 29L;
-        var firstStart = firstNew - engine.InputRequirements.HistorySize;
-        var firstInput = DeterministicSignals.Tone(engine.InputRequirements.InputSize, 128, 1024, firstStart, 0.75, 0.3);
+        var fine = PfbFineStageDesigner.Design(channel, 1024d / 4, 2);
+        var warmupBlocks = 2 + ((fine.Taps.Length - 1 + 1) / 2);
+        const long initialFirstNew = 29;
         var sink = new TestSink();
-
-        engine.Process(firstInput, firstNew, sink);
-        var secondFirst = firstNew + engine.InputRequirements.ChunkSize;
-        var secondInput = DeterministicSignals.Tone(
-            engine.InputRequirements.InputSize,
-            128,
-            1024,
-            secondFirst - engine.InputRequirements.HistorySize,
-            0.75,
-            0.3);
-        engine.Process(secondInput, secondFirst, sink);
+        for (var block = 0; block < warmupBlocks + 2; block++)
+        {
+            var firstNew = initialFirstNew + ((long)block * engine.InputRequirements.ChunkSize);
+            var input = DeterministicSignals.Tone(
+                engine.InputRequirements.InputSize,
+                128,
+                1024,
+                firstNew - engine.InputRequirements.HistorySize,
+                0.75,
+                0.3);
+            engine.Process(input, firstNew, block >= warmupBlocks ? sink : new TestSink());
+        }
 
         Assert.Multiple(() =>
         {
@@ -112,6 +113,7 @@ public sealed class PfbAlgebraTests
             Assert.That(engine.Plan.FilterDesignMode, Is.EqualTo("KaiserConservative"));
             Assert.That(engine.InputRequirements.HistorySize,
                 Is.EqualTo((engine.Plan.TapsPerPhase!.Value * 8) - 1));
+            Assert.That(sink.Blocks, Has.Count.EqualTo(2));
             Assert.That(sink.Blocks.SelectMany(block => block.Samples)
                 .All(sample => Math.Abs(sample.Magnitude - 0.75) < 4e-4), Is.True);
         });

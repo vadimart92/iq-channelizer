@@ -34,17 +34,29 @@ public sealed class StreamingFlowTests
             Hints = new ChannelizerImplementationHints(PfbFftSize: fftSize, PfbHopSize: hop, PfbFramesPerBatch: 3, Simd: SimdPreference.Scalar)
         };
         using var engine = ChannelizerFactory.Create(request);
-        var firstNew = 19L;
-        var absoluteStart = firstNew - engine.InputRequirements.HistorySize;
-        var input = Tone(engine.InputRequirements.InputSize, 128, request.InputSampleRateHz, absoluteStart);
-        var sink = new TestSink();
+        var fine = IqChannelizer.Pfb.PfbFineStageDesigner.Design(
+            request.Channels[0],
+            request.InputSampleRateHz / hop,
+            3);
+        var warmupBlocks = 2 + ((fine.Taps.Length - 1 + 2) / 3);
+        const long initialFirstNew = 19;
+        TestSink? sink = null;
+        for (var block = 0; block < warmupBlocks; block++)
+        {
+            var firstNew = initialFirstNew + ((long)block * engine.InputRequirements.ChunkSize);
+            var input = Tone(
+                engine.InputRequirements.InputSize,
+                128,
+                request.InputSampleRateHz,
+                firstNew - engine.InputRequirements.HistorySize);
+            sink = new TestSink();
+            engine.Process(input, firstNew, sink);
+        }
 
-        engine.Process(input, firstNew, sink);
-
-        Assert.That(sink.Blocks, Has.Count.EqualTo(1));
+        Assert.That(sink!.Blocks, Has.Count.EqualTo(1));
         Assert.That(sink.Blocks[0].Samples, Has.Length.EqualTo(3));
-        Assert.That(sink.Blocks[0].Samples.All(x => Math.Abs(x.Magnitude - 1) < 1e-4), Is.True);
-        Assert.That(sink.Blocks[0].Samples.All(x => Math.Abs(x.Imaginary) < 1e-4), Is.True);
+        Assert.That(sink.Blocks[0].Samples.All(x => Math.Abs(x.Magnitude - 1) < 2e-4), Is.True);
+        Assert.That(sink.Blocks[0].Samples.All(x => Math.Abs(x.Imaginary) < 2e-4), Is.True);
     }
 
     [Test]
@@ -125,6 +137,36 @@ public sealed class StreamingFlowTests
         Assert.That(() => engine.Reset(0), Throws.TypeOf<ObjectDisposedException>());
     }
 
+    [TestCase(ChannelizerStrategy.Fdc)]
+    [TestCase(ChannelizerStrategy.Pfb)]
+    public void FailedSinkFaultsEngineUntilReset(ChannelizerStrategy strategy)
+    {
+        var request = ContractTests.Request(
+            strategy,
+            [ContractTests.Channel(1, 128), ContractTests.Channel(2, -128)]) with
+        {
+            InputBlocks = new InputBlockConstraints(16, 16),
+            Hints = strategy == ChannelizerStrategy.Fdc
+                ? new ChannelizerImplementationHints(FdcDecimationFactor: 2, Simd: SimdPreference.Scalar)
+                : new ChannelizerImplementationHints(PfbFftSize: 8, PfbHopSize: 4, PfbFramesPerBatch: 4, Simd: SimdPreference.Scalar)
+        };
+        using var engine = ChannelizerFactory.Create(request);
+        var input = new ComplexF[engine.InputRequirements.InputSize];
+
+        Assert.That(
+            () => engine.Process(input, 0, new ThrowingSink()),
+            Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("Synthetic sink failure."));
+        Assert.That(
+            () => engine.Process(input, engine.InputRequirements.ChunkSize, new TestSink()),
+            Throws.TypeOf<InvalidOperationException>().With.Message.Contains("faulted"));
+
+        engine.Reset(1_000);
+        var sink = new TestSink();
+        engine.Process(input, 1_000, sink);
+        Assert.That(sink.Blocks, Has.Count.EqualTo(2));
+        Assert.That(sink.Blocks.SelectMany(block => block.Samples).All(sample => sample.Magnitude == 0), Is.True);
+    }
+
     [Test]
     public void PfbContinuesAcrossProcessBoundaries()
     {
@@ -135,16 +177,21 @@ public sealed class StreamingFlowTests
             Hints = new ChannelizerImplementationHints(PfbFftSize: 8, PfbHopSize: 4, PfbFramesPerBatch: 2, Simd: SimdPreference.Scalar)
         };
         using var engine = ChannelizerFactory.Create(request);
-        var sink = new TestSink();
-        var first = 13L;
-        var firstInput = Tone(engine.InputRequirements.InputSize, 128, 1024, first - engine.InputRequirements.HistorySize);
-        engine.Process(firstInput, first, sink);
-        var secondFirst = first + engine.InputRequirements.ChunkSize;
-        var secondInput = Tone(engine.InputRequirements.InputSize, 128, 1024, secondFirst - engine.InputRequirements.HistorySize);
-        engine.Process(secondInput, secondFirst, sink);
+        var fine = IqChannelizer.Pfb.PfbFineStageDesigner.Design(channel, 1024d / 4, 2);
+        var warmupBlocks = 2 + ((fine.Taps.Length - 1 + 1) / 2);
+        const long initialFirst = 13;
+        TestSink? finalSink = null;
+        for (var block = 0; block < warmupBlocks; block++)
+        {
+            var first = initialFirst + ((long)block * engine.InputRequirements.ChunkSize);
+            var input = Tone(engine.InputRequirements.InputSize, 128, 1024, first - engine.InputRequirements.HistorySize);
+            finalSink = new TestSink();
+            engine.Process(input, first, finalSink);
+        }
 
-        Assert.That(sink.Blocks, Has.Count.EqualTo(2));
-        Assert.That(sink.Blocks.SelectMany(x => x.Samples).All(x => Math.Abs(x.Real - 1) < 1e-4 && Math.Abs(x.Imaginary) < 1e-4), Is.True);
+        Assert.That(finalSink!.Blocks, Has.Count.EqualTo(1));
+        Assert.That(finalSink.Blocks[0].Samples.All(
+            x => Math.Abs(x.Real - 1) < 2e-4 && Math.Abs(x.Imaginary) < 2e-4), Is.True);
     }
 
     [TestCase(ChannelizerStrategy.Fdc)]
@@ -197,5 +244,11 @@ public sealed class StreamingFlowTests
             BlockCount++;
             Checksum += channelId + samples[0].Real;
         }
+    }
+
+    private sealed class ThrowingSink : IChannelOutputSink
+    {
+        public void Write(int channelId, ReadOnlySpan<ComplexF> samples) =>
+            throw new InvalidOperationException("Synthetic sink failure.");
     }
 }

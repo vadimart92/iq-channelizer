@@ -33,6 +33,11 @@ public static class AliasedResponseEvaluator
             throw new ArgumentOutOfRangeException(nameof(evaluationPointCount));
         }
 
+        var responseDrivenPointCount = outputPassbandEdgeHz == 0
+            ? 2
+            : checked((int)Math.Ceiling((2 * outputPassbandEdgeHz / response.FrequencyStepHz) * 2) + 1);
+        evaluationPointCount = Math.Min(16_385, Math.Max(evaluationPointCount, responseDrivenPointCount));
+
         double worstMagnitude = 0;
         double worstFrequency = 0;
         for (var point = 0; point < evaluationPointCount; point++)

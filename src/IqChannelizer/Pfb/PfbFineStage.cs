@@ -9,7 +9,7 @@ internal sealed record PfbFineStageDesign(
     RationalSampleOffset GroupDelayCoarseSamples,
     AliasedResponseResult AliasedResponse)
 {
-    public string FilterId => DecimationFactor == 1 ? "Identity" : $"KaiserFineD{DecimationFactor}Order{Taps.Length - 1}";
+    public string FilterId => Taps.Length == 1 ? "Identity" : $"KaiserFineD{DecimationFactor}Order{Taps.Length - 1}";
 }
 
 internal static class PfbFineStageDesigner
@@ -31,8 +31,13 @@ internal static class PfbFineStageDesigner
             factor = candidate;
         }
 
-        if (factor == 1)
+        var stopbandEdge = (channel.PassbandWidthHz + channel.TransitionWidthHz) / 2;
+        if (factor == 1 && stopbandEdge >= coarseSampleRateHz / 2)
         {
+            // There is no representable stopband above this edge at the coarse
+            // rate. In every other D=1 case a real per-channel filter is still
+            // required: the shared prototype is centered on the coarse bin and
+            // can be wider or asymmetrically placed after residual rotation.
             return new PfbFineStageDesign(
                 1,
                 [1f],
@@ -44,12 +49,12 @@ internal static class PfbFineStageDesigner
         var specification = new LowPassFilterSpec(
             coarseSampleRateHz,
             channel.PassbandWidthHz / 2,
-            (channel.PassbandWidthHz + channel.TransitionWidthHz) / 2,
+            stopbandEdge,
             channel.PassbandRippleDb,
             channel.StopbandAttenuationDb + aliasBudgetDb);
         var filter = KaiserLowPassDesigner.Design(specification);
         var taps = filter.Taps.ToArray();
-        var dense = FrequencyResponseEvaluator.EvaluateDense(taps, coarseSampleRateHz, 16_385);
+        var dense = FrequencyResponseEvaluator.EvaluateDenseConservative(taps, coarseSampleRateHz, 16_385);
         var aliased = AliasedResponseEvaluator.EvaluateConservative(
             dense,
             factor,

@@ -64,7 +64,10 @@ public static class ChannelizerFactory
             FftwThreadCount = 1,
             AlignedBufferBytes = nativeBytes,
             EstimatedWorkingSetBytes = workingSetBytes,
-            Warnings = Array.Empty<string>(),
+            Warnings = channels.Select(channel => channel.Warning)
+                .Where(warning => warning is not null)
+                .Select(warning => warning!)
+                .ToArray(),
             FftSize = transformLength,
             FilterDesignMode = "KaiserConservativeOverlapSave"
         };
@@ -85,14 +88,21 @@ public static class ChannelizerFactory
             var decimation = decimations[index];
             var outputRate = request.InputSampleRateHz / decimation;
             ValidateOutputRate(requested, outputRate);
-            var bin = (int)Math.Round(requested.CenterFrequencyHz * transformLength / request.InputSampleRateHz);
-            var normalizedBin = PfbMath.Mod(bin, transformLength);
-            var signedBin = normalizedBin <= transformLength / 2 ? normalizedBin : normalizedBin - transformLength;
+            var normalizedBin = FrequencyBinMath.NearestNormalizedBin(
+                requested.CenterFrequencyHz,
+                request.InputSampleRateHz,
+                transformLength);
+            var signedBin = FrequencyBinMath.ToSignedBin(normalizedBin, transformLength);
             var coarse = signedBin * request.InputSampleRateHz / transformLength;
+            var residual = FrequencyBinMath.WrappedDifference(
+                requested.CenterFrequencyHz,
+                coarse,
+                request.InputSampleRateHz);
             result[index] = ResolveChannel(
                 requested, coarse, normalizedBin, outputRate, chunk / decimation, decimation,
                 firstOutputOffset: -history / 2, shortInverseFftLength: transformLength / decimation,
-                prototypeFilterId: $"KaiserFdcOrder{history}", groupDelay: new RationalSampleOffset(history, 2));
+                prototypeFilterId: $"KaiserFdcOrder{history}", groupDelay: new RationalSampleOffset(history, 2),
+                residualFrequency: residual);
         }
 
         return Array.AsReadOnly(result);
@@ -100,42 +110,29 @@ public static class ChannelizerFactory
 
     private static IStreamingChannelizer CreatePfb(ChannelizerRequest request)
     {
-        var constraints = request.InputBlocks ?? new InputBlockConstraints();
-        var fftSize = request.Hints?.PfbFftSize ?? 64;
-        var hopSize = request.Hints?.PfbHopSize ?? fftSize / 2;
-        var frames = request.Hints?.PfbFramesPerBatch ?? Math.Max(1, constraints.PreferredChunkSize / hopSize);
-        if (fftSize < 2 || hopSize < 1 || hopSize > fftSize || frames < 1)
-        {
-            throw new ArgumentOutOfRangeException(nameof(request), "PFB requires K >= 2, 1 <= H <= K, and at least one frame.");
-        }
-
-        int chunk;
-        try
-        {
-            chunk = checked(frames * hopSize);
-        }
-        catch (OverflowException exception)
-        {
-            throw new ArgumentException("PFB frames and hop size overflow the supported chunk size.", nameof(request), exception);
-        }
-        if (chunk > constraints.MaxChunkSize)
-        {
-            throw new ArgumentException("PFB frames do not fit MaxChunkSize.", nameof(request));
-        }
-
+        var layout = PfbPlanner.CreateLayout(request);
+        var fftSize = layout.FftSize;
+        var hopSize = layout.HopSize;
+        var frames = layout.FramesPerBatch;
+        var chunk = layout.InputRequirements.ChunkSize;
         var outputRate = request.InputSampleRateHz / hopSize;
-        var prototype = PfbPrototypeDesign.Design(request, fftSize, hopSize);
-        var fineStages = request.Channels
-            .Select(channel => PfbFineStageDesigner.Design(channel, outputRate, frames))
-            .ToArray();
+        var prototype = layout.Prototype;
+        var fineStages = layout.FineStages;
         var channels = new ResolvedChannelPlan[request.Channels.Count];
         for (var index = 0; index < channels.Length; index++)
         {
             var requested = request.Channels[index];
             ValidateOutputRate(requested, outputRate);
-            var bin = PfbMath.Mod((long)Math.Round(requested.CenterFrequencyHz * fftSize / request.InputSampleRateHz), fftSize);
-            var signedBin = bin <= fftSize / 2 ? bin : bin - fftSize;
+            var bin = FrequencyBinMath.NearestNormalizedBin(
+                requested.CenterFrequencyHz,
+                request.InputSampleRateHz,
+                fftSize);
+            var signedBin = FrequencyBinMath.ToSignedBin(bin, fftSize);
             var coarse = signedBin * request.InputSampleRateHz / fftSize;
+            var residual = FrequencyBinMath.WrappedDifference(
+                requested.CenterFrequencyHz,
+                coarse,
+                request.InputSampleRateHz);
             var fine = fineStages[index];
             var finalOutputRate = outputRate / fine.DecimationFactor;
             ValidateOutputRate(requested, finalOutputRate);
@@ -152,10 +149,11 @@ public static class ChannelizerFactory
                 groupDelay: totalDelay,
                 fineDecimationFactor: fine.DecimationFactor,
                 fineFilterId: fine.FilterId,
-                coarseOutputRate: outputRate);
+                coarseOutputRate: outputRate,
+                residualFrequency: residual);
         }
 
-        var requirements = new InputRequirements(prototype.Taps.Length - 1, chunk);
+        var requirements = layout.InputRequirements;
         var transformValues = checked((long)fftSize * frames);
         if (transformValues > int.MaxValue)
         {
@@ -178,7 +176,11 @@ public static class ChannelizerFactory
             FftwThreadCount = 1,
             AlignedBufferBytes = nativeBytes,
             EstimatedWorkingSetBytes = workingSetBytes,
-            Warnings = Array.Empty<string>(),
+            Warnings = layout.Warnings
+                .Concat(channels.Select(channel => channel.Warning)
+                    .Where(warning => warning is not null)
+                    .Select(warning => warning!))
+                .ToArray(),
             FftSize = fftSize,
             HopSize = hopSize,
             FramesPerBatch = frames,
@@ -206,7 +208,8 @@ public static class ChannelizerFactory
         RationalSampleOffset? groupDelay = null,
         int fineDecimationFactor = 1,
         string fineFilterId = "Identity",
-        double? coarseOutputRate = null)
+        double? coarseOutputRate = null,
+        double? residualFrequency = null)
     {
         var warning = request.PreferredOutputSampleRateHz is { } preferred && outputRate < preferred
             ? $"Resolved output rate {outputRate:R} Hz is below the preferred rate {preferred:R} Hz."
@@ -222,7 +225,7 @@ public static class ChannelizerFactory
             PassbandRippleDb = request.PassbandRippleDb,
             CoarseCenterFrequencyHz = coarse,
             CoarseOutputSampleRateHz = coarseOutputRate ?? outputRate,
-            ResidualFrequencyHz = request.CenterFrequencyHz - coarse,
+            ResidualFrequencyHz = residualFrequency ?? request.CenterFrequencyHz - coarse,
             OutputSampleRateHz = outputRate,
             OutputSamplesPerProcess = outputCount,
             CoarseBin = bin,

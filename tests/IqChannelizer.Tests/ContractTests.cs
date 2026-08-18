@@ -153,6 +153,56 @@ public sealed class ContractTests
         });
     }
 
+    [TestCase(ChannelizerStrategy.Fdc)]
+    [TestCase(ChannelizerStrategy.Pfb)]
+    public void NegativeNyquistUsesTheCanonicalSignedBin(ChannelizerStrategy strategy)
+    {
+        var request = Request(strategy, [Channel(1, -512)]) with
+        {
+            InputBlocks = new InputBlockConstraints(16, 16),
+            Hints = strategy == ChannelizerStrategy.Fdc
+                ? new ChannelizerImplementationHints(FdcDecimationFactor: 2, Simd: SimdPreference.Scalar)
+                : new ChannelizerImplementationHints(PfbFftSize: 8, PfbHopSize: 4, PfbFramesPerBatch: 4, Simd: SimdPreference.Scalar)
+        };
+
+        using var engine = ChannelizerFactory.Create(request);
+        var channel = engine.Plan.Channels.Single();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(channel.CoarseCenterFrequencyHz, Is.EqualTo(-512));
+            Assert.That(channel.ResidualFrequencyHz, Is.Zero);
+            Assert.That(channel.CoarseBin, Is.EqualTo(engine.Plan.FftSize!.Value / 2));
+        });
+    }
+
+    [TestCase(ChannelizerStrategy.Fdc)]
+    [TestCase(ChannelizerStrategy.Pfb)]
+    public void PositiveNyquistNeighbourUsesWrappedResidual(ChannelizerStrategy strategy)
+    {
+        var channelRequest = new ChannelRequest(1, 511, 400, 600, 50, 0.2);
+        var request = Request(strategy, [channelRequest]) with
+        {
+            InputBlocks = new InputBlockConstraints(16, 16),
+            Hints = strategy == ChannelizerStrategy.Fdc
+                ? new ChannelizerImplementationHints(FdcDecimationFactor: 1, Simd: SimdPreference.Scalar)
+                : new ChannelizerImplementationHints(
+                    PfbFftSize: 8,
+                    PfbHopSize: 1,
+                    PfbFramesPerBatch: 16,
+                    Simd: SimdPreference.Scalar)
+        };
+
+        using var engine = ChannelizerFactory.Create(request);
+        var channel = engine.Plan.Channels.Single();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(channel.CoarseCenterFrequencyHz, Is.EqualTo(-512));
+            Assert.That(channel.ResidualFrequencyHz, Is.EqualTo(-1));
+        });
+    }
+
     internal static ChannelizerRequest Request(ChannelizerStrategy strategy, IReadOnlyList<ChannelRequest> channels) =>
         new(1024, channels, strategy, new InputBlockConstraints(16, 32));
 

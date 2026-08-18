@@ -1,8 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="IqChannelizer.Benchmarks" />
     <InternalsVisibleTo Include="IqChannelizer.Tests" />
   </ItemGroup>
   <ItemGroup>

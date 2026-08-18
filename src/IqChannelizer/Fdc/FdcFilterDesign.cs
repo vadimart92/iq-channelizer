@@ -59,7 +59,7 @@ internal static class FdcFilterDesign
             window[shortBin] = new ComplexF((float)response.Real, (float)response.Imaginary);
         }
 
-        var dense = FrequencyResponseEvaluator.EvaluateDense(taps, inputSampleRateHz, DenseResponsePoints);
+        var dense = FrequencyResponseEvaluator.EvaluateDenseConservative(taps, inputSampleRateHz, DenseResponsePoints);
         var aliased = AliasedResponseEvaluator.EvaluateConservative(
             dense,
             decimation,

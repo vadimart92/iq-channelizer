@@ -17,17 +17,18 @@
 ## Остання перевірка
 
 - Дата: **2026-08-18**
-- Verified implementation commit: `ecbf805`
-- Tracker update: `tracker sync commit` поверх `ecbf805`
-- Release tests: **130 passed, 0 failed, 0 skipped** (повний restore + test)
-- Найближчий implementation step: **Крок 9 — generalized PFB planner**
-- Окремий housekeeping blocker: **Крок 0** ще не виконано, бо немає acceptance owner/fixture map і `artifacts/signal-validation/README.md`
+- Verified implementation base commit: `4e4c76c` + **uncommitted working tree**
+- Release tests: **148 passed, 0 failed, 0 skipped** (повний restore + test)
+- Companion tool: **27/27 Vitest**, production Vite build successful
+- Benchmarks: **12/12 BenchmarkDotNet Dry cases executed**; Dry data is not a performance baseline
+- Найближчий implementation step: **Крок 10 — ширша alias/blocker matrix і compact acceptance summaries**
+- Release blocker: packaging вимкнено до explicit FFTW licensing/distribution decision
 
 ## Зведена таблиця
 
 | Крок | Статус | Evidence / примітка |
 | --- | --- | --- |
-| 0. Baseline та acceptance map | не виконано | Release baseline відтворюється, але manifest і owner/fixture mapping відсутні |
+| 0. Baseline та acceptance map | виконано | [`docs/acceptance/manifest.md`](docs/acceptance/manifest.md) містить owner-role/fixture mapping і reproducible commands; 148/148 Release tests |
 | 1. Contracts, validation, timing | виконано | Commit `ced2747`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
 | 2. FFTW runtime | виконано | Commit `3eb2c62`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
 | 3. Scalar filter-design foundation | виконано | Commit history до `5bae632`; повторно перевірено зі Step 5 working tree, 117/117 tests |
@@ -36,25 +37,27 @@
 | 6. FDC planner/multiple-D | виконано | Commit `e969547`; per-channel D planner, shared N/forward FFT, grouped inverse plans; 122/122 tests на момент коміту |
 | 7. Generalized PFB algebra `P > 1` | виконано | Commit `29c9771`; Conservative prototype, direct oracle, timing/partition tests; 127/127 tests на момент коміту |
 | 8. Scalar PFB production flow | виконано | Commit `ecbf805`; native writable input, unique-bin fan-out, stateful fine decimation/DDC; 130/130 tests |
-| 9. Generalized PFB planner | наступний | Scalar production flow готовий; FoldAware лишається disabled |
-| 10. Correctness/integration suite | не почато | Розширюється після production flows |
+| 9. Generalized PFB planner | виконано | Deterministic power-of-two `K`, arbitrary integer `H`, bounded frames, exact Conservative/fine validation і planner-selected `H=33` end-to-end signal test |
+| 10. Correctness/integration suite | частково | Додано Nyquist wrap, sink-fault/reset, Dfine=1 blocker, partition-invariance і adversarial response-grid cases; повна multi-band sweep ще попереду |
 | 11. Diagnostics/observability | не почато | Не логувати в hot path |
-| 12. BenchmarkDotNet suite | не почато | Використати наявний третій project |
+| 12. BenchmarkDotNet suite | частково | BenchmarkDotNet 0.15.8: scalar FIR, FFTW, warm-cache planning та FDC/PFB 1/8/32-channel families; 12-case Dry smoke green, decision-grade stored profile ще відсутній |
 | 13. SIMD gate | відкладено | Потрібен явний дозвіл власника repository |
 | 14. FoldAware/selected-bin experiments | відкладено | Потрібні correctness і benchmark data |
-| 15. Facade/docs/Auto | не почато | `Auto` реалізувати останнім і лише за profile data |
+| 15. Facade/docs/Auto | частково | README, acceptance manifest, benchmark і release policy оновлені; `Auto` лишається intentionally unsupported до stored profiles |
 
 ## Детальні кроки
 
 ### Крок 0. Зафіксувати baseline та acceptance map
 
-**Статус: не виконано.**
+**Статус: виконано.** Base commit `4e4c76c` + uncommitted working tree; 148/148 Release tests.
 
 - Запустити Release tests і записати кількість passed tests у робочий звіт.
 - Зіставити кожен новий test fixture з конкретним acceptance criterion розділів 6–10 головного плану.
 - Додати короткий `artifacts/signal-validation/README.md` або інший малий manifest, але не комітити великі raw IQ artifacts.
 
 **Done:** baseline відтворюється на clean checkout з bundled FFTW DLL; список acceptance tests має owner/fixture mapping.
+
+**Evidence:** [`docs/acceptance/manifest.md`](docs/acceptance/manifest.md) зіставляє enforced/deferred gates з owner roles, fixtures і командами; великі generated outputs залишаються ignored.
 
 ### Крок 1. Завершити contracts, validation і timing metadata
 
@@ -185,7 +188,7 @@
 
 ### Крок 9. Реалізувати generalized PFB planner
 
-**Статус: наступний.**
+**Статус: виконано.** Base commit `4e4c76c` + uncommitted working tree; 148/148 Release tests.
 
 - Enumerate valid `K`, integer `H` і `FramesPerBatch` під chunk bounds.
 - Перевіряти single-bin feasibility, residual range, output-rate constraints і folded response.
@@ -194,9 +197,15 @@
 
 **Done:** planner вибирає щонайменше один `H != K` і `H != K/2`, що проходить повну signal spec.
 
+**Evidence:** `PfbPlanner.cs`, geometry/output-rate split у `PfbPrototypeDesign.cs`, factory wiring у `ChannelizerFactory.cs` і `PfbPlannerTests.cs`.
+
+**Design decisions:** automatic policy перебирає power-of-two `K` до 8192, integer `H` у межах `MaxChunkSize` і deterministic frame candidates. Спочатку відсіюються single-bin geometry, periodic residual, required output rate та chunk bounds; потім кандидати у стабільному score order проходять exact Conservative prototype і fine-stage design. Partial hints лишають warning, повністю forced shape є override. `BenchmarkProfileKey` не заповнюється, а FoldAware залишається disabled.
+
+**Done підтверджено:** planner детерміновано вибирає `K=64,H=29,F=4` та `K=64,H=33,F=4`, не пропускає feasible малий `H=16` при `MaxChunkSize=16`, відхиляє forced shape, що не вміщується, і planner-selected `H=33` зберігає amplitude після FIR warmup.
+
 ### Крок 10. Розширити correctness та integration suite
 
-**Статус: не почато.**
+**Статус: частково.** Base commit `4e4c76c` + uncommitted working tree.
 
 - Додати всі релевантні сценарії розділу 10.2 головного плану для FDC і PFB.
 - Перевірити exact counts/rates/timing, long-run phase, discontinuity/reset, first/last channel, bin wrap і worst residual `±DeltaF/2`.
@@ -204,6 +213,8 @@
 - Зберігати лише компактні machine-readable summaries в `artifacts/signal-validation/`.
 
 **Done:** обидва engines проходять independent DDC і alias acceptance suite; failures містять reproducible seed/configuration.
+
+**Поточний evidence:** canonical/wrapped Nyquist mapping, sink failure fault/reset для обох engines, PFB `Dfine=1` blocker rejection, `FramesPerBatch` invariance та narrow between-grid response peak уже автоматизовані. Повна sweep-матриця всіх alias bands і compact machine-readable signal summary ще не виконані.
 
 ### Крок 11. Додати diagnostics та observability
 
@@ -217,7 +228,7 @@
 
 ### Крок 12. Побудувати реальний BenchmarkDotNet suite
 
-**Статус: не почато.**
+**Статус: частково.** Base commit `4e4c76c` + uncommitted working tree.
 
 - Підключити BenchmarkDotNet у наявний третій project, не створювати новий project.
 - Додати FFTW, scalar primitives, FDC, PFB і end-to-end families з розділу 11 головного плану.
@@ -225,6 +236,10 @@
 - Генерувати `artifacts/benchmarks/latest-summary.md` з commit/environment/raw paths.
 
 **Done:** є reproducible baseline ns/input sample, allocations, working set і stage breakdown; немає realtime claims без end-to-end result.
+
+**Evidence:** BenchmarkDotNet 0.15.8 підключено до наявного project; `PrimitiveBenchmarks`, `FftwBenchmarks`, `EngineBenchmarks` і `PlanningBenchmarks` дають 12 cases. Dry smoke виконав усі cases, steady-state families не показали managed allocations. [`docs/benchmarks.md`](docs/benchmarks.md) забороняє трактувати Dry numbers як baseline.
+
+**Залишилось:** виконати повний statistical job на погодженому target CPU, зберегти profile summary/raw paths і додати stage breakdown/working-set evidence.
 
 ### Крок 13. SIMD gate — лише після явного дозволу
 
@@ -248,7 +263,7 @@
 
 ### Крок 15. Завершити facade, docs і Auto останнім
 
-**Статус: не почато.**
+**Статус: частково.**
 
 - Завершити public plan inspection, diagnostics, reset/reconfiguration docs і minimal production example.
 - Перевірити Definition of Done і створити acceptance report.
@@ -256,3 +271,5 @@
 - Оновити FFTW licensing/distribution documentation перед release/publish.
 
 **Done:** Definition of Done розділу 14 головного плану виконаний, Release tests і benchmarks відтворюються, а `Auto` не використовує неперевірені heuristics.
+
+**Поточний evidence:** README описує automatic PFB planning, Dfine=1 filtering і fault/reset semantics; acceptance manifest та benchmark guide додані. SDK pinned до `10.0.303`, тестовий toolchain оновлено, а [`docs/release-policy.md`](docs/release-policy.md) і `IsPackable=false` блокують випадковий binary release до FFTW license decision. `Auto` коректно лишається unsupported.
