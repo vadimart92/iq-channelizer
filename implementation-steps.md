@@ -17,10 +17,10 @@
 ## Остання перевірка
 
 - Дата: **2026-08-18**
-- Verified baseline commit: `5bae632`
-- Tracker update: `uncommitted Step 4 working tree` поверх `5bae632`
-- Release tests: **110 passed, 0 failed, 0 skipped** (повний restore + test)
-- Найближчий implementation step: **Крок 5 — FDC overlap-save MVP**
+- Verified baseline commit: `170dfe4`
+- Tracker update: `uncommitted Step 5 working tree` поверх `170dfe4`
+- Release tests: **117 passed, 0 failed, 0 skipped** (повний restore + test)
+- Найближчий implementation step: **Крок 6 — FDC planner і multiple-D groups**
 - Окремий housekeeping blocker: **Крок 0** ще не виконано, бо немає acceptance owner/fixture map і `artifacts/signal-validation/README.md`
 
 ## Зведена таблиця
@@ -30,10 +30,10 @@
 | 0. Baseline та acceptance map | не виконано | Release baseline відтворюється, але manifest і owner/fixture mapping відсутні |
 | 1. Contracts, validation, timing | виконано | Commit `ced2747`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
 | 2. FFTW runtime | виконано | Commit `3eb2c62`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
-| 3. Scalar filter-design foundation | виконано | Commit history до `5bae632`; повторно перевірено зі Step 4 working tree, 110/110 tests |
-| 4. Independent reference DDC/toolkit | виконано | Uncommitted working tree поверх `5bae632`; 20 new tests, 110/110 total |
-| 5. FDC overlap-save MVP | наступний | Кроки 3–4 завершено; production overlap-save implementation ще не почато |
-| 6. FDC planner/multiple-D | не почато | Залежить від Кроку 5 |
+| 3. Scalar filter-design foundation | виконано | Commit history до `5bae632`; повторно перевірено зі Step 5 working tree, 117/117 tests |
+| 4. Independent reference DDC/toolkit | виконано | Commit `170dfe4`; 20 dedicated tests; повторно перевірено зі Step 5 working tree |
+| 5. FDC overlap-save MVP | виконано | Uncommitted working tree поверх `170dfe4`; full-frame FFT, Kaiser window, exact discard, DDC/signal acceptance; 117/117 tests |
+| 6. FDC planner/multiple-D | наступний | Один forced power-of-two `D` готовий; потрібні candidate enumeration і grouped inverse plans |
 | 7. Generalized PFB algebra `P > 1` | не почато | Conservative prototype потребує Кроку 3 |
 | 8. Scalar PFB production flow | не почато | Залежить від Кроків 4 і 7 |
 | 9. Generalized PFB planner | не почато | FoldAware лишається disabled |
@@ -116,7 +116,7 @@
 
 ### Крок 5. Перетворити FDC skeleton на справжній overlap-save MVP
 
-**Статус: наступний.**
+**Статус: виконано.** Uncommitted working tree поверх `170dfe4`; 117/117 Release tests.
 
 - Спроєктувати anti-alias FIR/window для одного forced `D` і визначити `HistorySize = filterLength - 1`.
 - Гарантувати `N = HistorySize + ChunkSize`, divisibility/alignment і `ChunkSize <= MaxChunkSize`.
@@ -126,9 +126,15 @@
 
 **Done:** один-D FDC проходить amplitude, phase, history-discard, positive/negative/wrap center, blocker/alias і split-stream tests.
 
+**Evidence:** `FdcFilterDesign.cs`, `FftwFdcEngine.cs`, `ChannelizerFactory.cs`, complex-window overload у `SpectralSliceExtractor.cs`, `FdcOverlapSaveTests.cs`, оновлені `ContractTests.cs` і `README.md`.
+
+**Design decisions:** для кожного каналу створюється causal symmetric Kaiser FIR; symmetric zero-padding робить engine-wide `HistorySize` кратним forced `D` без зміни magnitude response. `N = HistorySize + ChunkSize`, весь frame надходить у shared forward FFT, short length дорівнює `N/D`, complex response семплується на FFT grid з урахуванням residual offset, а conservative folded response перевіряється до створення engine. Block phase походить від `firstNewSampleIndex - HistorySize`; після backward FFT застосовується explicit `1/N`, discard рівно `HistorySize/D`, а residual rotator стартує з absolute `firstNewSampleIndex`. Group delay і first-output offset походять від фактичного padded FIR order.
+
+**Done підтверджено:** 7 нових tests покривають amplitude/phase проти незалежного double-precision DDC, positive/negative/off-bin/wrap centers, exact history discard, split-stream continuity, blocker/alias rejection, full-frame dimensions і divisibility. Steady-state no-allocation та попередні routing/contract tests залишаються зеленими.
+
 ### Крок 6. Додати FDC planner і multiple-D groups
 
-**Статус: не почато.**
+**Статус: наступний.**
 
 - Enumerate power-of-two `D` candidates та bounded/smooth `N` candidates.
 - Узгодити engine-wide history/alignment для різних `D`.

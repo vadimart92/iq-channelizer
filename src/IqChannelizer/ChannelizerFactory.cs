@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using IqChannelizer.Abstractions;
 using IqChannelizer.Fdc;
 using IqChannelizer.Fftw;
+using IqChannelizer.Dsp;
 using IqChannelizer.Pfb;
 using IqChannelizer.Runtime;
 
@@ -37,12 +38,35 @@ public static class ChannelizerFactory
             throw new ArgumentException("No FDC chunk satisfies the requested decimation and block constraints.", nameof(request));
         }
 
-        var requirements = new InputRequirements(0, chunk);
-        var channels = ResolveFdcChannels(request, decimation, chunk);
-        var shortLength = chunk / decimation;
+        var taps = request.Channels
+            .Select(channel => FdcFilterDesign.DesignAlignedTaps(channel, request.InputSampleRateHz, decimation))
+            .ToArray();
+        var history = taps.Max(item => item.Length - 1);
+        if (history % decimation != 0)
+        {
+            throw new InvalidOperationException("FDC filter history must be divisible by its decimation factor.");
+        }
+
+        var requirements = new InputRequirements(history, chunk);
+        var transformLength = requirements.InputSize;
+        var channels = ResolveFdcChannels(request, decimation, transformLength, chunk, history);
+        var designs = new FdcChannelDesign[channels.Count];
+        for (var index = 0; index < designs.Length; index++)
+        {
+            var channelTaps = PadFilterToHistory(taps[index], history);
+            designs[index] = FdcFilterDesign.Complete(
+                request.Channels[index],
+                channelTaps,
+                request.InputSampleRateHz,
+                decimation,
+                transformLength,
+                channels[index].ResidualFrequencyHz);
+        }
+
+        var shortLength = transformLength / decimation;
         var channelCount = channels.Count;
-        var nativeBytes = checked(16L * (chunk + ((long)shortLength * channelCount)));
-        var workingSetBytes = checked(nativeBytes + (8L * (chunk + (3L * shortLength * channelCount))));
+        var nativeBytes = checked(16L * (transformLength + ((long)shortLength * channelCount)));
+        var workingSetBytes = checked(nativeBytes + (8L * (transformLength + (4L * shortLength * channelCount))));
         var plan = new ResolvedChannelizerPlan
         {
             Strategy = ChannelizerStrategy.Fdc,
@@ -55,14 +79,19 @@ public static class ChannelizerFactory
             FftwThreadCount = 1,
             AlignedBufferBytes = nativeBytes,
             EstimatedWorkingSetBytes = workingSetBytes,
-            Warnings = Array.AsReadOnly(["FDC currently uses a length-one prototype; overlap-save filtering is not implemented yet."]),
-            FftSize = chunk,
-            FilterDesignMode = "LengthOneFixture"
+            Warnings = Array.Empty<string>(),
+            FftSize = transformLength,
+            FilterDesignMode = "KaiserConservativeOverlapSave"
         };
-        return new FftwFdcEngine(plan, decimation);
+        return new FftwFdcEngine(plan, decimation, designs);
     }
 
-    private static IReadOnlyList<ResolvedChannelPlan> ResolveFdcChannels(ChannelizerRequest request, int decimation, int chunk)
+    private static IReadOnlyList<ResolvedChannelPlan> ResolveFdcChannels(
+        ChannelizerRequest request,
+        int decimation,
+        int transformLength,
+        int chunk,
+        int history)
     {
         var outputRate = request.InputSampleRateHz / decimation;
         var result = new ResolvedChannelPlan[request.Channels.Count];
@@ -70,13 +99,14 @@ public static class ChannelizerFactory
         {
             var requested = request.Channels[index];
             ValidateOutputRate(requested, outputRate);
-            var bin = (int)Math.Round(requested.CenterFrequencyHz * chunk / request.InputSampleRateHz);
-            var normalizedBin = PfbMath.Mod(bin, chunk);
-            var signedBin = normalizedBin <= chunk / 2 ? normalizedBin : normalizedBin - chunk;
-            var coarse = signedBin * request.InputSampleRateHz / chunk;
+            var bin = (int)Math.Round(requested.CenterFrequencyHz * transformLength / request.InputSampleRateHz);
+            var normalizedBin = PfbMath.Mod(bin, transformLength);
+            var signedBin = normalizedBin <= transformLength / 2 ? normalizedBin : normalizedBin - transformLength;
+            var coarse = signedBin * request.InputSampleRateHz / transformLength;
             result[index] = ResolveChannel(
                 requested, coarse, normalizedBin, outputRate, chunk / decimation, decimation,
-                firstOutputOffset: 0, shortInverseFftLength: chunk / decimation);
+                firstOutputOffset: -history / 2, shortInverseFftLength: transformLength / decimation,
+                prototypeFilterId: $"KaiserFdcOrder{history}", groupDelay: new RationalSampleOffset(history, 2));
         }
 
         return Array.AsReadOnly(result);
@@ -166,7 +196,9 @@ public static class ChannelizerFactory
         int? shortInverseFftLength = null,
         int? pfbGroupId = null,
         int? pfbFftSize = null,
-        int? pfbHopSize = null)
+        int? pfbHopSize = null,
+        string? prototypeFilterId = null,
+        RationalSampleOffset? groupDelay = null)
     {
         var warning = request.PreferredOutputSampleRateHz is { } preferred && outputRate < preferred
             ? $"Resolved output rate {outputRate:R} Hz is below the preferred rate {preferred:R} Hz."
@@ -192,13 +224,26 @@ public static class ChannelizerFactory
             PfbGroupId = pfbGroupId,
             PfbFftSize = pfbFftSize,
             PfbHopSize = pfbHopSize,
-            PrototypeFilterId = shortInverseFftLength.HasValue ? "LengthOneFdcFixture" : "RectangularPfbP1Fixture",
+            PrototypeFilterId = prototypeFilterId ?? (shortInverseFftLength.HasValue ? "LengthOneFdcFixture" : "RectangularPfbP1Fixture"),
             FineFilterId = "Identity",
-            GroupDelayInputSamples = new RationalSampleOffset(0, 1),
+            GroupDelayInputSamples = groupDelay ?? new RationalSampleOffset(0, 1),
             FirstOutputInputSampleOffset = new RationalSampleOffset(firstOutputOffset, 1),
             InputSamplesPerOutputSample = new RationalSampleOffset(inputSamplesPerOutput, 1),
             Warning = warning
         };
+    }
+
+    private static float[] PadFilterToHistory(float[] taps, int history)
+    {
+        var order = taps.Length - 1;
+        if (order == history)
+        {
+            return taps;
+        }
+
+        var result = new float[history + 1];
+        taps.CopyTo(result, (history - order) / 2);
+        return result;
     }
 
     private static void ValidateOutputRate(ChannelRequest channel, double outputRate)

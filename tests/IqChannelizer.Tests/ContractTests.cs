@@ -106,11 +106,17 @@ public sealed class ContractTests
             Assert.That(resolved.ChannelId, Is.EqualTo(91));
             Assert.That(resolved.PassbandWidthHz, Is.EqualTo(20));
             Assert.That(resolved.StopbandAttenuationDb, Is.EqualTo(75));
-            Assert.That(resolved.ShortInverseFftLength, Is.EqualTo(8));
+            Assert.That(engine.InputRequirements.HistorySize, Is.GreaterThan(0));
+            Assert.That(engine.InputRequirements.HistorySize % 2, Is.Zero);
+            Assert.That(engine.Plan.FftSize, Is.EqualTo(engine.InputRequirements.InputSize));
+            Assert.That(resolved.ShortInverseFftLength, Is.EqualTo(engine.InputRequirements.InputSize / 2));
             Assert.That(resolved.OutputSamplesPerProcess, Is.EqualTo(8));
-            Assert.That(resolved.FirstOutputInputSampleOffset, Is.EqualTo(new RationalSampleOffset(0, 1)));
-            Assert.That(resolved.GroupDelayInputSamples, Is.EqualTo(new RationalSampleOffset(0, 1)));
-            Assert.That(resolved.Warning, Is.Not.Null);
+            Assert.That(resolved.FirstOutputInputSampleOffset,
+                Is.EqualTo(new RationalSampleOffset(-engine.InputRequirements.HistorySize, 2)));
+            Assert.That(resolved.GroupDelayInputSamples,
+                Is.EqualTo(new RationalSampleOffset(engine.InputRequirements.HistorySize, 2)));
+            Assert.That(resolved.PrototypeFilterId, Does.StartWith("KaiserFdcOrder"));
+            Assert.That(resolved.Warning, Does.Contain("below the preferred rate"));
         });
     }
 

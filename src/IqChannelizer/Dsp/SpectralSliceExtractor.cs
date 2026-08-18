@@ -65,6 +65,100 @@ internal static class SpectralSliceExtractor
         }
     }
 
+    public static void Extract(
+        ReadOnlySpan<ComplexF> fullSpectrum,
+        int centerBin,
+        ReadOnlySpan<ComplexF> window,
+        ComplexF blockPhase,
+        Span<ComplexF> destination)
+    {
+        Validate(fullSpectrum, window.Length, blockPhase, destination);
+        foreach (var coefficient in window)
+        {
+            if (!float.IsFinite(coefficient.Real) || !float.IsFinite(coefficient.Imaginary))
+            {
+                throw new ArgumentException("Window coefficients must be finite.", nameof(window));
+            }
+        }
+
+        var normalizedCenter = Mod(centerBin, fullSpectrum.Length);
+        var positiveLength = (destination.Length / 2) + 1;
+        CopyCircularSegment(fullSpectrum, normalizedCenter, window, destination, 0, positiveLength, blockPhase);
+        var negativeLength = destination.Length - positiveLength;
+        if (negativeLength > 0)
+        {
+            CopyCircularSegment(
+                fullSpectrum,
+                normalizedCenter - negativeLength,
+                window,
+                destination,
+                positiveLength,
+                negativeLength,
+                blockPhase);
+        }
+    }
+
+    private static void Validate(
+        ReadOnlySpan<ComplexF> fullSpectrum,
+        int windowLength,
+        ComplexF blockPhase,
+        Span<ComplexF> destination)
+    {
+        if (fullSpectrum.IsEmpty)
+        {
+            throw new ArgumentException("Full spectrum must not be empty.", nameof(fullSpectrum));
+        }
+
+        if (destination.IsEmpty || destination.Length > fullSpectrum.Length)
+        {
+            throw new ArgumentException("Spectral slice length must be in [1, full spectrum length].", nameof(destination));
+        }
+
+        if (windowLength != destination.Length)
+        {
+            throw new ArgumentException("Window and destination lengths must match.", "window");
+        }
+
+        if (!float.IsFinite(blockPhase.Real) || !float.IsFinite(blockPhase.Imaginary))
+        {
+            throw new ArgumentException("Block phase must be finite.", nameof(blockPhase));
+        }
+    }
+
+    private static void CopyCircularSegment(
+        ReadOnlySpan<ComplexF> source,
+        int sourceStart,
+        ReadOnlySpan<ComplexF> window,
+        Span<ComplexF> destination,
+        int destinationOffset,
+        int count,
+        ComplexF blockPhase)
+    {
+        var normalizedStart = Mod(sourceStart, source.Length);
+        var firstCount = Math.Min(count, source.Length - normalizedStart);
+        CopyContiguous(source[normalizedStart..], window, destination, destinationOffset, firstCount, blockPhase);
+        var remaining = count - firstCount;
+        if (remaining > 0)
+        {
+            CopyContiguous(source, window, destination, destinationOffset + firstCount, remaining, blockPhase);
+        }
+    }
+
+    private static void CopyContiguous(
+        ReadOnlySpan<ComplexF> source,
+        ReadOnlySpan<ComplexF> window,
+        Span<ComplexF> destination,
+        int destinationOffset,
+        int count,
+        ComplexF blockPhase)
+    {
+        for (var index = 0; index < count; index++)
+        {
+            destination[destinationOffset + index] =
+                (source[index] * window[destinationOffset + index]) * blockPhase;
+        }
+    }
+
     private static void CopyCircularSegment(
         ReadOnlySpan<ComplexF> source,
         int sourceStart,

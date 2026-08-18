@@ -13,13 +13,15 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
     private readonly ComplexF[] _inverseInput;
     private readonly ComplexF[] _inverseOutput;
     private readonly ComplexF[][] _outputs;
+    private readonly FdcChannelDesign[] _channelDesigns;
     private readonly int _decimation;
 
-    public FftwFdcEngine(ResolvedChannelizerPlan plan, int decimation)
+    public FftwFdcEngine(ResolvedChannelizerPlan plan, int decimation, FdcChannelDesign[] channelDesigns)
         : base(plan)
     {
         _decimation = decimation;
-        var transformLength = InputRequirements.ChunkSize;
+        _channelDesigns = channelDesigns;
+        var transformLength = InputRequirements.InputSize;
         var shortLength = transformLength / decimation;
         _forwardPlan = new FftwComplexPlan(transformLength, 1, FftwNative.Forward);
         _backwardPlan = new FftwComplexPlan(shortLength, plan.Channels.Count, FftwNative.Backward);
@@ -31,33 +33,37 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
 
     protected override void ProcessCore(ReadOnlySpan<ComplexF> input, long firstNewSampleIndex, IChannelOutputSink output)
     {
-        var chunk = input[InputRequirements.HistorySize..];
-        _forwardPlan.Execute(chunk, _spectrum);
-        var n = chunk.Length;
+        _forwardPlan.Execute(input, _spectrum);
+        var n = input.Length;
         var shortLength = n / _decimation;
+        var frameStartInputIndex = checked(firstNewSampleIndex - InputRequirements.HistorySize);
 
         for (var channelIndex = 0; channelIndex < Plan.Channels.Count; channelIndex++)
         {
             var channel = Plan.Channels[channelIndex];
             var inverseInput = _inverseInput.AsSpan(channelIndex * shortLength, shortLength);
-            for (var shortBin = 0; shortBin < shortLength; shortBin++)
-            {
-                var signedOffset = shortBin <= shortLength / 2 ? shortBin : shortBin - shortLength;
-                var sourceBin = Pfb.PfbMath.Mod(channel.CoarseBin + signedOffset, n);
-                inverseInput[shortBin] = _spectrum[sourceBin];
-            }
+            // Local FFT mixing omits the absolute frame origin. This scalar restores it once per block;
+            // the short-IFFT index then supplies the local coarse phase progression.
+            var blockPhase = ComplexF.FromPolar(
+                -2 * Math.PI * channel.CoarseCenterFrequencyHz * frameStartInputIndex / Plan.InputSampleRateHz);
+            SpectralSliceExtractor.Extract(
+                _spectrum,
+                channel.CoarseBin,
+                _channelDesigns[channelIndex].SpectralWindow,
+                blockPhase,
+                inverseInput);
         }
 
         _backwardPlan.Execute(_inverseInput, _inverseOutput);
+        var discard = InputRequirements.HistorySize / _decimation;
         for (var channelIndex = 0; channelIndex < Plan.Channels.Count; channelIndex++)
         {
             var channel = Plan.Channels[channelIndex];
             var inverseOutput = _inverseOutput.AsSpan(channelIndex * shortLength, shortLength);
             var destination = _outputs[channelIndex].AsSpan();
-            var blockPhase = ComplexF.FromPolar(-2 * Math.PI * channel.CoarseCenterFrequencyHz * firstNewSampleIndex / Plan.InputSampleRateHz);
             for (var index = 0; index < destination.Length; index++)
             {
-                destination[index] = (inverseOutput[index] * (1f / n)) * blockPhase;
+                destination[index] = inverseOutput[discard + index] * (1f / n);
             }
 
             ScalarRotator.RotateInPlace(
