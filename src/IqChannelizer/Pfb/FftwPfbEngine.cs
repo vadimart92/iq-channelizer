@@ -11,6 +11,7 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
     private readonly int _hopSize;
     private readonly int _frames;
     private readonly float[] _prototype;
+    private readonly Avx2PfbCoefficients? _avx2Coefficients;
     private readonly FftwComplexPlan _backwardPlan;
     private readonly ComplexF[] _fftOutput;
     private readonly int[] _uniqueBins;
@@ -27,6 +28,7 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         int frames,
         float[] prototype,
         PfbFineStageDesign[] fineStageDesigns,
+        SimdPreference simdBackend,
         DiagnosticsMode diagnosticsMode)
         : base(plan, diagnosticsMode)
     {
@@ -34,6 +36,9 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         _hopSize = hopSize;
         _frames = frames;
         _prototype = prototype;
+        _avx2Coefficients = simdBackend == SimdPreference.Avx2
+            ? new Avx2PfbCoefficients(prototype, fftSize)
+            : null;
         _backwardPlan = new FftwComplexPlan(fftSize, frames, FftwNative.Backward);
         _fftOutput = new ComplexF[checked(fftSize * frames)];
         _uniqueBins = plan.Channels.Select(channel => channel.CoarseBin).Distinct().ToArray();
@@ -51,23 +56,29 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
     {
         var spanAbsoluteStart = firstNewSampleIndex - InputRequirements.HistorySize;
         var polyphaseStartedAt = Diagnostics.BeginTiming();
-        for (var frame = 0; frame < _frames; frame++)
+        if (_avx2Coefficients is { } coefficients)
         {
-            var anchor = checked(firstNewSampleIndex + ((long)(frame + 1) * _hopSize) - 1);
-            var shift = PfbMath.Mod(anchor, _fftSize);
-            var fftInput = _backwardPlan.WritableInput.Slice(frame * _fftSize, _fftSize);
-            var firstSegmentLength = _fftSize - shift;
-            for (var destinationPhase = 0; destinationPhase < firstSegmentLength; destinationPhase++)
-            {
-                var phase = destinationPhase + shift;
-                fftInput[destinationPhase] = FilterPhase(input, spanAbsoluteStart, anchor, phase);
-            }
-
-            for (var destinationPhase = firstSegmentLength; destinationPhase < _fftSize; destinationPhase++)
-            {
-                var phase = destinationPhase - firstSegmentLength;
-                fftInput[destinationPhase] = FilterPhase(input, spanAbsoluteStart, anchor, phase);
-            }
+            PfbPhaseFir.FillBatchAvx2(
+                input,
+                spanAbsoluteStart,
+                firstNewSampleIndex,
+                _hopSize,
+                _frames,
+                _prototype,
+                coefficients,
+                _backwardPlan.WritableInput);
+        }
+        else
+        {
+            PfbPhaseFir.FillBatchScalar(
+                input,
+                spanAbsoluteStart,
+                firstNewSampleIndex,
+                _hopSize,
+                _frames,
+                _fftSize,
+                _prototype,
+                _backwardPlan.WritableInput);
         }
 
         Diagnostics.RecordPfbPolyphase(
@@ -143,16 +154,4 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         }
     }
 
-    private ComplexF FilterPhase(ReadOnlySpan<ComplexF> input, long spanAbsoluteStart, long anchor, int phase)
-    {
-        var accumulator = new ComplexF();
-        for (var tap = phase; tap < _prototype.Length; tap += _fftSize)
-        {
-            var absoluteIndex = anchor - tap;
-            var spanIndex = checked((int)(absoluteIndex - spanAbsoluteStart));
-            accumulator += input[spanIndex] * _prototype[tap];
-        }
-
-        return accumulator;
-    }
 }

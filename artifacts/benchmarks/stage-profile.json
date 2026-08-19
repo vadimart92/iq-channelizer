@@ -1,7 +1,7 @@
 {
-  "SchemaVersion": 1,
-  "Commit": "db4e98d\u002Bstep12-working-tree",
-  "GeneratedAtUtc": "2026-08-19T09:09:37.302555+00:00",
+  "SchemaVersion": 2,
+  "Commit": "1d4fc31\u002Bstep13-working-tree",
+  "GeneratedAtUtc": "2026-08-19T14:00:20.4618264+00:00",
   "Environment": {
     "Runtime": ".NET 10.0.11",
     "OperatingSystem": "Microsoft Windows 10.0.26200",
@@ -14,42 +14,44 @@
     "InputSampleRateHz": 1000000,
     "ChannelCount": 8,
     "ChunkSize": 4096,
-    "Iterations": 2000
+    "Iterations": 5000
   },
   "Results": [
     {
       "Strategy": "Fdc",
-      "DspBackend": "FFTW fftw-3.3.5-sse2-avx single-precision C2C",
+      "SelectedSimdBackend": "Scalar",
+      "DspBackend": "FFTW fftw-3.3.5-sse2-avx single-precision C2C with scalar extraction",
       "FftSize": 5280,
       "HopSize": null,
       "FramesPerBatch": null,
       "HistorySize": 1184,
       "ChunkSize": 4096,
-      "EstimatedWorkingSetBytes": 187712,
-      "ProcessWorkingSetBytesBefore": 29446144,
-      "ProcessWorkingSetBytesAfter": 31883264,
+      "EstimatedWorkingSetBytes": 177152,
+      "ProcessWorkingSetBytesBefore": 35741696,
+      "ProcessWorkingSetBytesAfter": 35741696,
       "ManagedAllocatedBytes": 0,
-      "NanosecondsPerInputSample": 16.420166015625,
-      "SustainedInputMegaSamplesPerSecond": 60.900724088199,
-      "RealtimeMarginAtMetadataRate": 62.91858678955453,
+      "NanosecondsPerInputSample": 4.3424072265625,
+      "SustainedInputMegaSamplesPerSecond": 230.28701543305317,
+      "RealtimeMarginAtMetadataRate": 231.41242937853107,
       "LatencyMilliseconds": {
-        "P50": 0.0633,
-        "P95": 0.0731,
-        "P99": 0.088,
-        "Maximum": 5.4211
+        "P50": 0.0176,
+        "P95": 0.0178,
+        "P99": 0.0262,
+        "Maximum": 0.0338
       },
       "StageTicks": {
-        "Input": 13545,
-        "Fftw": 274880,
-        "Channel": 1038665,
-        "Output": 7283,
-        "Total": 1345140
+        "Input": 31082,
+        "Fftw": 666900,
+        "Channel": 168610,
+        "Output": 6950,
+        "Total": 889325
       },
-      "OutputSamples": 2048000,
-      "Checksum": 56028
+      "OutputSamples": 5120000,
+      "Checksum": 197344
     },
     {
       "Strategy": "Pfb",
+      "SelectedSimdBackend": "Scalar",
       "DspBackend": "FFTW fftw-3.3.5-sse2-avx single-precision batched C2C with scalar PFB FIR",
       "FftSize": 64,
       "HopSize": 32,
@@ -57,27 +59,91 @@
       "HistorySize": 1215,
       "ChunkSize": 4096,
       "EstimatedWorkingSetBytes": 294784,
-      "ProcessWorkingSetBytesBefore": 33046528,
-      "ProcessWorkingSetBytesAfter": 33669120,
+      "ProcessWorkingSetBytesBefore": 37433344,
+      "ProcessWorkingSetBytesAfter": 37462016,
       "ManagedAllocatedBytes": 0,
-      "NanosecondsPerInputSample": 50.8174072265625,
-      "SustainedInputMegaSamplesPerSecond": 19.678296366865705,
-      "RealtimeMarginAtMetadataRate": 28.42470506592644,
+      "NanosecondsPerInputSample": 26.50490234375,
+      "SustainedInputMegaSamplesPerSecond": 37.72886943821566,
+      "RealtimeMarginAtMetadataRate": 32.3794466403162,
       "LatencyMilliseconds": {
-        "P50": 0.1442,
-        "P95": 0.5653,
-        "P99": 0.5851,
-        "Maximum": 4.0428
+        "P50": 0.1061,
+        "P95": 0.1197,
+        "P99": 0.1736,
+        "Maximum": 0.2853
       },
       "StageTicks": {
-        "Input": 3390936,
-        "Fftw": 102962,
-        "Channel": 658984,
-        "Output": 3656,
-        "Total": 4162962
+        "Input": 4280319,
+        "Fftw": 227443,
+        "Channel": 899967,
+        "Output": 7014,
+        "Total": 5428204
       },
-      "OutputSamples": 2048000,
-      "Checksum": 56028
+      "OutputSamples": 5120000,
+      "Checksum": 197344
+    },
+    {
+      "Strategy": "Fdc",
+      "SelectedSimdBackend": "Avx2",
+      "DspBackend": "FFTW fftw-3.3.5-sse2-avx single-precision C2C with AVX2/FMA extraction",
+      "FftSize": 5280,
+      "HopSize": null,
+      "FramesPerBatch": null,
+      "HistorySize": 1184,
+      "ChunkSize": 4096,
+      "EstimatedWorkingSetBytes": 177152,
+      "ProcessWorkingSetBytesBefore": 36634624,
+      "ProcessWorkingSetBytesAfter": 36671488,
+      "ManagedAllocatedBytes": 0,
+      "NanosecondsPerInputSample": 5.4010498046875,
+      "SustainedInputMegaSamplesPerSecond": 185.14919065032748,
+      "RealtimeMarginAtMetadataRate": 188.7557603686636,
+      "LatencyMilliseconds": {
+        "P50": 0.0219,
+        "P95": 0.0224,
+        "P99": 0.0321,
+        "Maximum": 0.0369
+      },
+      "StageTicks": {
+        "Input": 31784,
+        "Fftw": 670743,
+        "Channel": 380067,
+        "Output": 7048,
+        "Total": 1106135
+      },
+      "OutputSamples": 5120000,
+      "Checksum": 197344
+    },
+    {
+      "Strategy": "Pfb",
+      "SelectedSimdBackend": "Avx2",
+      "DspBackend": "FFTW fftw-3.3.5-sse2-avx single-precision batched C2C with AVX2/FMA PFB FIR",
+      "FftSize": 64,
+      "HopSize": 32,
+      "FramesPerBatch": 128,
+      "HistorySize": 1215,
+      "ChunkSize": 4096,
+      "EstimatedWorkingSetBytes": 304512,
+      "ProcessWorkingSetBytesBefore": 36900864,
+      "ProcessWorkingSetBytesAfter": 36900864,
+      "ManagedAllocatedBytes": 0,
+      "NanosecondsPerInputSample": 13.49404296875,
+      "SustainedInputMegaSamplesPerSecond": 74.10677454605981,
+      "RealtimeMarginAtMetadataRate": 75.1559633027523,
+      "LatencyMilliseconds": {
+        "P50": 0.0545,
+        "P95": 0.0588,
+        "P99": 0.0816,
+        "Maximum": 0.0946
+      },
+      "StageTicks": {
+        "Input": 1622903,
+        "Fftw": 228428,
+        "Channel": 891806,
+        "Output": 7043,
+        "Total": 2763580
+      },
+      "OutputSamples": 5120000,
+      "Checksum": 197344
     }
   ]
 }

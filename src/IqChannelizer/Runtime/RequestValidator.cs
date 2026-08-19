@@ -120,10 +120,6 @@ internal static class RequestValidator
             throw new ArgumentOutOfRangeException(nameof(request), "Forced PFB hop size must not exceed its FFT size.");
         }
 
-        if (hints.Simd is SimdPreference.Avx2 or SimdPreference.Avx512)
-        {
-            throw new NotSupportedException("SIMD backends are intentionally not part of the scalar foundation.");
-        }
     }
 
     private static void ValidateOptionalRate(double? value, int channelId, string label)

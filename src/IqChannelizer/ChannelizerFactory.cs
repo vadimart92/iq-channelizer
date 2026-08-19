@@ -29,6 +29,7 @@ public static class ChannelizerFactory
 
     private static IStreamingChannelizer CreateFdc(ChannelizerRequest request)
     {
+        var simdBackend = SimdBackendResolver.Resolve(request.Hints?.Simd ?? SimdPreference.Auto);
         var layout = FdcPlanner.CreateLayout(request);
         var requirements = layout.InputRequirements;
         var history = requirements.HistorySize;
@@ -51,15 +52,17 @@ public static class ChannelizerFactory
         var sumShortLengths = channels.Sum(channel => (long)channel.ShortInverseFftLength!.Value);
         var outputValues = channels.Sum(channel => (long)channel.OutputSamplesPerProcess);
         var nativeBytes = checked(16L * (transformLength + sumShortLengths));
-        var workingSetBytes = checked(nativeBytes + (8L * transformLength) + (24L * sumShortLengths) + (8L * outputValues));
+        var workingSetBytes = checked(nativeBytes + (8L * transformLength) + (16L * sumShortLengths) + (8L * outputValues));
         var plan = new ResolvedChannelizerPlan
         {
             Strategy = ChannelizerStrategy.Fdc,
             InputSampleRateHz = request.InputSampleRateHz,
             InputRequirements = requirements,
             Channels = channels,
-            DspBackend = $"FFTW {FftwRuntime.Info.Version} single-precision C2C",
-            SelectedSimdBackend = SimdPreference.Scalar,
+            DspBackend = simdBackend == SimdPreference.Avx2
+                ? $"FFTW {FftwRuntime.Info.Version} single-precision C2C with AVX2/FMA extraction"
+                : $"FFTW {FftwRuntime.Info.Version} single-precision C2C with scalar extraction",
+            SelectedSimdBackend = simdBackend,
             ChunkAlignment = layout.MaximumDecimation,
             FftwThreadCount = 1,
             AlignedBufferBytes = nativeBytes,
@@ -71,7 +74,7 @@ public static class ChannelizerFactory
             FftSize = transformLength,
             FilterDesignMode = "KaiserConservativeOverlapSave"
         };
-        return new FftwFdcEngine(plan, designs, request.Hints?.Diagnostics ?? DiagnosticsMode.Disabled);
+        return new FftwFdcEngine(plan, designs, simdBackend, request.Hints?.Diagnostics ?? DiagnosticsMode.Disabled);
     }
 
     private static IReadOnlyList<ResolvedChannelPlan> ResolveFdcChannels(
@@ -110,6 +113,7 @@ public static class ChannelizerFactory
 
     private static IStreamingChannelizer CreatePfb(ChannelizerRequest request)
     {
+        var simdBackend = SimdBackendResolver.Resolve(request.Hints?.Simd ?? SimdPreference.Auto);
         var layout = PfbPlanner.CreateLayout(request);
         var fftSize = layout.FftSize;
         var hopSize = layout.HopSize;
@@ -161,17 +165,20 @@ public static class ChannelizerFactory
         }
 
         var nativeBytes = checked(16L * transformValues);
+        var simdCoefficientBytes = simdBackend == SimdPreference.Avx2 ? 8L * prototype.Taps.Length : 0;
         var workingSetBytes = checked(nativeBytes + (16L * transformValues) +
-                                      (24L * frames * channels.Length) + (4L * prototype.Taps.Length) +
-                                      fineStages.Sum(stage => 16L * stage.Taps.Length));
+                                       (24L * frames * channels.Length) + (4L * prototype.Taps.Length) +
+                                       fineStages.Sum(stage => 16L * stage.Taps.Length) + simdCoefficientBytes);
         var plan = new ResolvedChannelizerPlan
         {
             Strategy = ChannelizerStrategy.Pfb,
             InputSampleRateHz = request.InputSampleRateHz,
             InputRequirements = requirements,
             Channels = Array.AsReadOnly(channels),
-            DspBackend = $"FFTW {FftwRuntime.Info.Version} single-precision batched C2C with scalar PFB FIR",
-            SelectedSimdBackend = SimdPreference.Scalar,
+            DspBackend = simdBackend == SimdPreference.Avx2
+                ? $"FFTW {FftwRuntime.Info.Version} single-precision batched C2C with AVX2/FMA PFB FIR"
+                : $"FFTW {FftwRuntime.Info.Version} single-precision batched C2C with scalar PFB FIR",
+            SelectedSimdBackend = simdBackend,
             ChunkAlignment = hopSize,
             FftwThreadCount = 1,
             AlignedBufferBytes = nativeBytes,
@@ -196,6 +203,7 @@ public static class ChannelizerFactory
             frames,
             prototype.Taps,
             fineStages,
+            simdBackend,
             request.Hints?.Diagnostics ?? DiagnosticsMode.Disabled);
     }
 

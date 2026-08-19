@@ -2,7 +2,7 @@
 
 Streaming complex-IQ channelization with interchangeable FDC and generalized PFB strategies.
 
-The current milestone provides the public request/plan/streaming contracts, deterministic planning, a multi-decimation FFTW overlap-save FDC with one shared forward FFT, grouped short inverse transforms and validated Kaiser anti-alias filters, plus a generalized batched `K/H` PFB with a Conservative `P > 1` Kaiser prototype, absolute frame correction, unique-bin fan-out and per-channel power-of-two fine decimation. The PFB planner enumerates feasible `K/H/FramesPerBatch` shapes, validates exact filters, and can select non-2× oversampling. Scalar reference transforms, conservative response/folding validation, and BenchmarkDotNet entry points are included. SIMD, `Auto`, FoldAware/selected-bin variants, and realtime claims are intentionally not included yet.
+The current milestone provides the public request/plan/streaming contracts, deterministic planning, a multi-decimation FFTW overlap-save FDC with one shared forward FFT, grouped short inverse transforms and validated Kaiser anti-alias filters, plus a generalized batched `K/H` PFB with a Conservative `P > 1` Kaiser prototype, absolute frame correction, unique-bin fan-out and per-channel power-of-two fine decimation. The PFB planner enumerates feasible `K/H/FramesPerBatch` shapes, validates exact filters, and can select non-2× oversampling. Scalar reference transforms, conservative response/folding validation, and BenchmarkDotNet entry points are included. On AVX2/FMA hosts the default SIMD preference selects measured AVX2 PFB FIR and FDC extraction kernels once at engine creation; a forced scalar fallback remains available. The channelizer `Auto` strategy, AVX-512, FoldAware/selected-bin variants, and realtime claims remain behind separate data gates.
 
 For source-checkout builds and tests, the pinned Windows x64 FFTW binary is copied beside the managed assembly automatically. It is intentionally excluded from the future NuGet package: NuGet consumers must supply a compatible native FFTW runtime themselves. FFTW plans and aligned native buffers are created once with the engine and disposed with it; no planning occurs in `Process`.
 
@@ -19,7 +19,7 @@ var request = new ChannelizerRequest(
     Channels: [new ChannelRequest(1, 125_000, 20_000, 10_000)],
     Strategy: ChannelizerStrategy.Pfb,
     InputBlocks: new InputBlockConstraints(256, 1024),
-    Hints: new ChannelizerImplementationHints(Simd: SimdPreference.Scalar));
+    Hints: new ChannelizerImplementationHints(Simd: SimdPreference.Auto));
 
 using var channelizer = ChannelizerFactory.Create(request);
 

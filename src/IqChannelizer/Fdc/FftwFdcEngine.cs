@@ -12,14 +12,17 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
     private readonly InverseGroup[] _inverseGroups;
     private readonly ComplexF[][] _outputs;
     private readonly FdcChannelDesign[] _channelDesigns;
+    private readonly bool _useAvx2;
 
     public FftwFdcEngine(
         ResolvedChannelizerPlan plan,
         FdcChannelDesign[] channelDesigns,
+        SimdPreference simdBackend,
         DiagnosticsMode diagnosticsMode)
         : base(plan, diagnosticsMode)
     {
         _channelDesigns = channelDesigns;
+        _useAvx2 = simdBackend == SimdPreference.Avx2;
         var transformLength = InputRequirements.InputSize;
         _forwardPlan = new FftwComplexPlan(transformLength, 1, FftwNative.Forward);
         _spectrum = new ComplexF[transformLength];
@@ -72,19 +75,33 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
             {
                 var channelIndex = group.ChannelIndices[groupChannelIndex];
                 var channel = Plan.Channels[channelIndex];
-                var inverseInput = group.Input.AsSpan(groupChannelIndex * group.ShortLength, group.ShortLength);
+                var inverseInput = group.BackwardPlan.WritableInput.Slice(
+                    groupChannelIndex * group.ShortLength,
+                    group.ShortLength);
                 // Local FFT mixing omits the absolute frame origin. This scalar restores it once per block;
                 // the short-IFFT index then supplies the local coarse phase progression.
                 var blockPhase = ScalarRotator.CreatePhasor(
                     channel.CoarseCenterFrequencyHz,
                     Plan.InputSampleRateHz,
                     frameStartInputIndex);
-                SpectralSliceExtractor.Extract(
-                    _spectrum,
-                    channel.CoarseBin,
-                    _channelDesigns[channelIndex].SpectralWindow,
-                    blockPhase,
-                    inverseInput);
+                if (_useAvx2)
+                {
+                    SpectralSliceExtractor.ExtractAvx2Unchecked(
+                        _spectrum,
+                        channel.CoarseBin,
+                        _channelDesigns[channelIndex].SpectralWindow,
+                        blockPhase,
+                        inverseInput);
+                }
+                else
+                {
+                    SpectralSliceExtractor.ExtractUnchecked(
+                        _spectrum,
+                        channel.CoarseBin,
+                        _channelDesigns[channelIndex].SpectralWindow,
+                        blockPhase,
+                        inverseInput);
+                }
             }
 
             if (Diagnostics.IsTimingEnabled)
@@ -95,7 +112,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
             fftStartedAt = Diagnostics.BeginTiming();
             try
             {
-                group.BackwardPlan.Execute(group.Input, group.Output);
+                group.BackwardPlan.ExecuteFromInput(group.Output);
             }
             catch
             {
@@ -162,8 +179,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
             ShortLength = transformLength / decimation;
             Discard = historySize / decimation;
             BackwardPlan = new FftwComplexPlan(ShortLength, channelIndices.Length, FftwNative.Backward);
-            Input = new ComplexF[checked(ShortLength * channelIndices.Length)];
-            Output = new ComplexF[Input.Length];
+            Output = new ComplexF[checked(ShortLength * channelIndices.Length)];
         }
 
         public int Decimation { get; }
@@ -171,7 +187,6 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
         public int ShortLength { get; }
         public int Discard { get; }
         public FftwComplexPlan BackwardPlan { get; }
-        public ComplexF[] Input { get; }
         public ComplexF[] Output { get; }
     }
 }

@@ -221,17 +221,27 @@ public sealed class StreamingFlowTests
             x => Math.Abs(x.Real - 1) < 2e-4 && Math.Abs(x.Imaginary) < 2e-4), Is.True);
     }
 
-    [TestCase(ChannelizerStrategy.Fdc)]
-    [TestCase(ChannelizerStrategy.Pfb)]
+    [TestCase(ChannelizerStrategy.Fdc, SimdPreference.Scalar)]
+    [TestCase(ChannelizerStrategy.Pfb, SimdPreference.Scalar)]
+    [TestCase(ChannelizerStrategy.Fdc, SimdPreference.Avx2)]
+    [TestCase(ChannelizerStrategy.Pfb, SimdPreference.Avx2)]
     [NonParallelizable]
-    public void SteadyStateProcessDoesNotAllocateManagedMemory(ChannelizerStrategy strategy)
+    public void SteadyStateProcessDoesNotAllocateManagedMemory(
+        ChannelizerStrategy strategy,
+        SimdPreference simdPreference)
     {
+        if (simdPreference == SimdPreference.Avx2 &&
+            (!System.Runtime.Intrinsics.X86.Avx2.IsSupported || !System.Runtime.Intrinsics.X86.Fma.IsSupported))
+        {
+            Assert.Ignore("AVX2/FMA is not supported on this test host.");
+        }
+
         var request = ContractTests.Request(strategy, [ContractTests.Channel(1, 128)]) with
         {
             InputBlocks = new InputBlockConstraints(16, 16),
             Hints = strategy == ChannelizerStrategy.Fdc
-                ? new ChannelizerImplementationHints(FdcDecimationFactor: 2, Simd: SimdPreference.Scalar)
-                : new ChannelizerImplementationHints(PfbFftSize: 8, PfbHopSize: 4, PfbFramesPerBatch: 4, Simd: SimdPreference.Scalar)
+                ? new ChannelizerImplementationHints(FdcDecimationFactor: 2, Simd: simdPreference)
+                : new ChannelizerImplementationHints(PfbFftSize: 8, PfbHopSize: 4, PfbFramesPerBatch: 4, Simd: simdPreference)
         };
         using var engine = ChannelizerFactory.Create(request);
         var input = new ComplexF[engine.InputRequirements.InputSize];

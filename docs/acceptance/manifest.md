@@ -21,9 +21,11 @@ remains under ignored `TestResults/` and `BenchmarkDotNet.Artifacts/` directorie
 | FFTW runtime identity, exports, alignment, cache and steady-state allocation contract | Runtime owner | `FftwTests` plus pinned hashes in `docs/fftw-runtime.md` | Enforced |
 | Diagnostics counters, stage timing, fault/reset status and enabled/disabled allocation contract | Runtime owner | `DiagnosticsTests` | Enforced |
 | Unified facade plan snapshots, lifecycle and reconfiguration boundary | Core API owner | `ContractTests.ResolvedPlanCollectionsAreImmutableSnapshots`, `docs/facade.md` | Enforced |
-| Scalar primitive, FFTW, planning, FDC and PFB statistical baseline exists | Performance owner | `artifacts/benchmarks/latest-summary.md`, retained BDN CSV/Markdown, and `stage-profile.json` | Enforced for recorded scalar configuration; no general realtime claim |
+| Scalar/AVX2 primitive, FFTW, planning, FDC and PFB statistical evidence exists | Performance owner | `artifacts/benchmarks/latest-summary.md`, retained BDN CSV/Markdown, and schema-v2 `stage-profile.json` | Enforced for recorded configurations; no general realtime claim |
 | Managed-only NuGet excludes FFTW native assets | Release owner | local pack inspection; native assets have `Pack=false`; library has `IsPackable=false` | Guarded pending clean-environment consumer validation |
-| SIMD dispatch and optimized kernels | Performance owner | No accepted fixture yet | Deferred until explicit approval |
+| SIMD dispatch, scalar fallback and unsupported-ISA behavior | Performance owner | `ContractTests`, `SimdEngineTests`, `SimdTests` | Enforced |
+| AVX2 PFB direct rotated-store FIR | DSP/performance owner | `PfbSimdTests`, `PfbAlgebraTests`, `PfbProductionFlowTests`, retained `PfbFirBenchmarks` report | Enforced |
+| AVX2 FDC wrapped complex extraction | DSP/performance owner | `SimdTests`, `FdcOverlapSaveTests`, `SimdEngineTests`, retained `FdcExtractionBenchmarks` report | Enforced |
 | `Auto`, FoldAware prototype and selected-bin PFB | Architecture owner | No accepted benchmark/signal profile yet | Deliberately unsupported |
 
 ## Reproducible verification
@@ -32,7 +34,7 @@ Run from the repository root:
 
 ```powershell
 dotnet restore IqChannelizer.sln
-dotnet test IqChannelizer.sln -c Release --no-restore
+dotnet test IqChannelizer.sln -c Release --no-restore --results-directory TestResults
 dotnet format IqChannelizer.sln --verify-no-changes --no-restore
 dotnet run --project benchmarks/IqChannelizer.Benchmarks -c Release --no-build -- --list flat
 ```

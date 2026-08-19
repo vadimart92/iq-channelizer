@@ -1,5 +1,6 @@
 using BenchmarkDotNet.Attributes;
 using IqChannelizer.Abstractions;
+using System.Runtime.Intrinsics.X86;
 
 namespace IqChannelizer.Benchmarks;
 
@@ -18,6 +19,13 @@ public class EngineBenchmarks
     [Params(1, 8, 32)]
     public int ChannelCount { get; set; }
 
+    [ParamsSource(nameof(Backends))]
+    public SimdPreference Simd { get; set; }
+
+    public IEnumerable<SimdPreference> Backends => Avx2.IsSupported && Fma.IsSupported
+        ? [SimdPreference.Scalar, SimdPreference.Avx2]
+        : [SimdPreference.Scalar];
+
     [GlobalSetup]
     public void Setup()
     {
@@ -31,12 +39,12 @@ public class EngineBenchmarks
                 0.2))
             .ToArray();
         var hints = Strategy == ChannelizerStrategy.Fdc
-            ? new ChannelizerImplementationHints(FdcDecimationFactor: 32, Simd: SimdPreference.Scalar)
+            ? new ChannelizerImplementationHints(FdcDecimationFactor: 32, Simd: Simd)
             : new ChannelizerImplementationHints(
                 PfbFftSize: 64,
                 PfbHopSize: 32,
                 PfbFramesPerBatch: 128,
-                Simd: SimdPreference.Scalar);
+                Simd: Simd);
         var request = new ChannelizerRequest(
             SampleRate,
             channels,

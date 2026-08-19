@@ -133,8 +133,8 @@ public sealed class FftwTests
     public void FftwOwnedBuffersAreAtLeastSixteenByteAligned()
     {
         using var plan = new FftwComplexPlan(16, 2, FftwNative.Forward);
-        Assert.That(plan.InputAddress % 16, Is.EqualTo((nuint)0));
-        Assert.That(plan.OutputAddress % 16, Is.EqualTo((nuint)0));
+        Assert.That(plan.InputAddress % 64, Is.EqualTo((nuint)0));
+        Assert.That(plan.OutputAddress % 64, Is.EqualTo((nuint)0));
         Assert.That(plan.InputAlignmentClass, Is.EqualTo(plan.OutputAlignmentClass));
     }
 
@@ -142,6 +142,7 @@ public sealed class FftwTests
     public void ReusableNativeBufferOwnsAlignedWritableStorage()
     {
         using var buffer = new FftwAlignedBuffer<ComplexF>(17);
+        Assert.That(buffer.Address % 64, Is.EqualTo((nuint)0));
         buffer.Span[3] = new ComplexF(4, -2);
 
         Assert.Multiple(() =>

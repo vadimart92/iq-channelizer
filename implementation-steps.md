@@ -17,18 +17,18 @@
 ## Остання перевірка
 
 - Дата: **2026-08-19**
-- Verified implementation base commit: `23b05b0` + **uncommitted working tree**
-- Release tests: **170 passed, 0 failed, 0 skipped**
+- Verified implementation base commit: `1d4fc31` + **uncommitted Step 13 working tree**
+- Release tests: **202 passed, 0 failed, 0 skipped**
 - Companion tool: **27/27 Vitest**, production Vite build successful
-- Benchmarks: **12/12 full statistical BenchmarkDotNet cases** plus stored allocation/latency/stage profile
-- Найближчий implementation step: **немає ungated increment; Крок 13 (SIMD) потребує явного дозволу власника**
-- Release blocker: packaging вимкнено до explicit FFTW licensing/distribution decision
+- Benchmarks: **18 full statistical BenchmarkDotNet cases** (12 current scalar/AVX2 engine cases plus retained FFTW/planning/FIR baselines), 12 SIMD kernel short-run cases, schema-v2 allocation/latency/stage profile
+- Найближчий implementation step: **немає ungated increment; Крок 14 потребує окремих FoldAware/selected-bin correctness і crossover data**
+- Release blocker: binary packaging залишається вимкненим за managed-only policy; FFTW не входить до package
 
 ## Зведена таблиця
 
 | Крок | Статус | Evidence / примітка |
 | --- | --- | --- |
-| 0. Baseline та acceptance map | виконано | [`docs/acceptance/manifest.md`](docs/acceptance/manifest.md) містить owner-role/fixture mapping і reproducible commands; [`docs/acceptance/report.md`](docs/acceptance/report.md) аудіює Definition of Done; 170/170 Release tests |
+| 0. Baseline та acceptance map | виконано | [`docs/acceptance/manifest.md`](docs/acceptance/manifest.md) містить owner-role/fixture mapping і reproducible commands; [`docs/acceptance/report.md`](docs/acceptance/report.md) аудіює Definition of Done; 202/202 Release tests |
 | 1. Contracts, validation, timing | виконано | Commit `ced2747`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
 | 2. FFTW runtime | виконано | Commit `3eb2c62`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
 | 3. Scalar filter-design foundation | виконано | Commit history до `5bae632`; повторно перевірено зі Step 5 working tree, 117/117 tests |
@@ -41,7 +41,7 @@
 | 10. Correctness/integration suite | виконано | Commit `f138d1d`; FDC/PFB alias sweeps, worst residuals, compact machine-readable summary |
 | 11. Diagnostics/observability | виконано | Commit `db4e98d`; allocation-free counters/stage timing, fault/reset status і documented semantics |
 | 12. BenchmarkDotNet suite | виконано | Commit `23b05b0`; 12 statistical cases, retained raw reports і integration stage/working-set profile |
-| 13. SIMD gate | відкладено | Потрібен явний дозвіл власника repository |
+| 13. SIMD gate | виконано | Creation-time scalar/AVX2 dispatch, 64-byte buffers, AVX2 PFB direct-store FIR і FDC extraction; 202/202 tests, 12-case full engine BDN і retained kernel comparisons |
 | 14. FoldAware/selected-bin experiments | відкладено | Потрібні correctness і benchmark data |
 | 15. Facade/docs/Auto | частково (ungated facade/docs виконано) | Immutable plan snapshots, complete usage/reconfiguration docs і Definition-of-Done report; `Auto` та binary release лишаються за profile/license gates |
 
@@ -255,13 +255,19 @@
 
 ### Крок 13. SIMD gate — лише після явного дозволу
 
-**Статус: відкладено.**
+**Статус: виконано.** Власник repository явно дозволив реалізацію 2026-08-19. Uncommitted working tree поверх `1d4fc31`; 202/202 Release tests.
 
 - Після дозволу реалізувати scalar-equivalent AVX2/FMA primitives у порядку Phase 5.
 - Далі реалізувати phase-parallel PFB FIR з direct rotated store та FDC extraction kernels.
 - AVX-512 додавати лише якщо benchmark показує benefit; ISA dispatch робити один раз.
 
 **Done:** random/tail/alignment, scalar-vs-SIMD end-to-end tests і benchmarks зелені.
+
+**Evidence:** `FftwAlignedBuffer.cs` гарантує 64-byte effective address поверх FFTW-owned allocation. `SimdBackendResolver.cs` один раз при creation розв’язує `Auto/Scalar/Avx2`; forced unsupported AVX2 дає actionable error, AVX-512 залишається вимкненим. `Avx2ComplexKernels.cs`, `PfbPhaseFir.cs` і `SpectralSliceExtractor.cs` реалізують tested AoS primitives, phase-parallel PFB FIR із expanded-by-tap coefficients/direct two-segment rotated FFTW store та wrap-safe FDC complex extraction. FDC extraction пише прямо у writable native inverse-plan input; scalar fallback використовує ту саму validated layout.
+
+**Correctness evidence:** `SimdTests`, `PfbSimdTests`, `SimdEngineTests`, розширені `ContractTests`, `FftwTests` і `StreamingFlowTests` покривають artificial capability matrices, random values, scalar tails, misaligned spans, exact/partial overlap, compact/expanded coefficient variants, arbitrary `H`, signed/large absolute origins, scalar-vs-AVX2 FDC/PFB partitions і 2,000-call zero-allocation representative profiles. Повний independent-DDC/alias suite лишається зеленим.
+
+**Performance decisions:** full statistical `EngineBenchmarks` має 12/12 scalar/AVX2 cases без allocations; AVX2 покращує всі recorded BDN shapes. PFB: 22.541 -> 10.113 ns/sample (1 channel), 25.084 -> 13.053 (8), 36.806 -> 24.410 (32). FDC benefit є меншим: 2.700 -> 2.673, 4.153 -> 4.018, 9.079 -> 8.417. Expanded PFB coefficients явно виграли у compact (`3.676` vs `5.925` ns/sample для 8 taps/phase; `8.594` vs `14.088` для 20). AVX2 residual rotator не підключено: short comparison `1.886` vs `1.853` ns/sample не є переконливим. AVX-512 лишається окремим data gate. Raw Markdown/CSV і schema-v2 stage profile збережені в `artifacts/benchmarks/`.
 
 ### Крок 14. FoldAware та selected-bin experiments — лише за даними
 
@@ -275,7 +281,7 @@
 
 ### Крок 15. Завершити facade, docs і Auto останнім
 
-**Статус: частково (ungated facade/docs і hardening scope виконано).** Base commit `c7a4477` + current working tree; 175/175 Release tests.
+**Статус: частково (ungated facade/docs і hardening scope виконано).** Base commit `1d4fc31` + current working tree; 202/202 Release tests.
 
 - Завершити public plan inspection, diagnostics, reset/reconfiguration docs і minimal production example.
 - Перевірити Definition of Done і створити acceptance report.
@@ -286,6 +292,6 @@
 
 **Evidence:** `ChannelizerFactory.cs` повертає read-only snapshots для channels і warnings; `ContractTests.ResolvedPlanCollectionsAreImmutableSnapshots` перевіряє обидві strategies та відв’язування від mutable request list. README містить самодостатній request/plan/process/sink example. [`docs/facade.md`](docs/facade.md) фіксує plan inspection, span lifetime, serialized streaming і різницю між `Reset` та створенням нового engine. [`docs/acceptance/report.md`](docs/acceptance/report.md) аудіює кожен пункт Definition of Done і явно відділяє enforced, guarded, deferred та externally blocked gates.
 
-**Design decisions:** in-place reconfiguration не додається: зміна channels/rates/strategy/hints потребує створення та перевірки нового engine поза hot path. `Auto` і SIMD не ввімкнені, бо наявний scalar profile не є versioned comparative strategy/SIMD profile. IqChannelizer має MIT license; FFTW 3.3.5 очікувано використовується для локальної відтворюваності, але DLL/header не входитимуть до NuGet. [`docs/release-policy.md`](docs/release-policy.md) і `IsPackable=false` блокують binary release лише до перевірки managed-only package layout.
+**Design decisions:** in-place reconfiguration не додається: зміна channels/rates/strategy/hints потребує створення та перевірки нового engine поза hot path. SIMD `Auto` є лише hardware/backend selection між accepted scalar/AVX2 paths; channelizer strategy `Auto` не ввімкнена без versioned comparative strategy profile. IqChannelizer має MIT license; FFTW 3.3.5 очікувано використовується для локальної відтворюваності, але DLL/header не входитимуть до NuGet. [`docs/release-policy.md`](docs/release-policy.md) і `IsPackable=false` блокують binary release лише до перевірки managed-only package layout.
 
-**Done ще не підтверджено повністю:** загальний Definition of Done містить SIMD, FoldAware comparison, target 100 MS/s realtime evidence, `Auto` profile та clean-environment consumer validation для managed-only package (локальна перевірка вже підтвердила MIT metadata й відсутність FFTW assets). SigMF generator ведеться окремо й не є gate цього проєкту. Наступний крок 13 можна починати лише після явного дозволу власника repository.
+**Done ще не підтверджено повністю:** загальний Definition of Done містить AVX-512 measured decision, FoldAware comparison, target 100 MS/s realtime evidence, channelizer `Auto` profile та clean-environment consumer validation для managed-only package (локальна перевірка вже підтвердила MIT metadata й відсутність FFTW assets). SigMF generator ведеться окремо й не є gate цього проєкту. Крок 14 не починати без окремих correctness/crossover data.

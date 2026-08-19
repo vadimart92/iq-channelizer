@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using IqChannelizer.Abstractions;
+using System.Runtime.Intrinsics.X86;
 
 namespace IqChannelizer.Benchmarks;
 
@@ -11,6 +12,7 @@ internal static class StageProfileRunner
     private const int ChannelCount = 8;
     private const int ChunkSize = 4096;
     private const int DefaultIterations = 2000;
+    private const int StabilizationIterations = 2048;
 
     public static void Run(string[] args)
     {
@@ -27,13 +29,18 @@ internal static class StageProfileRunner
 
         var fullPath = Path.GetFullPath(outputPath);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        var results = new[]
+        var backends = Avx2.IsSupported && Fma.IsSupported
+            ? new[] { SimdPreference.Scalar, SimdPreference.Avx2 }
+            : new[] { SimdPreference.Scalar };
+        var results = new List<EngineStageProfile>();
+        foreach (var backend in backends)
         {
-            Profile(ChannelizerStrategy.Fdc, iterations),
-            Profile(ChannelizerStrategy.Pfb, iterations)
-        };
+            results.Add(Profile(ChannelizerStrategy.Fdc, backend, iterations));
+            results.Add(Profile(ChannelizerStrategy.Pfb, backend, iterations));
+        }
+
         var document = new StageProfileDocument(
-            SchemaVersion: 1,
+            SchemaVersion: 2,
             Commit: commit,
             GeneratedAtUtc: DateTimeOffset.UtcNow,
             Environment: new EnvironmentProfile(
@@ -49,20 +56,28 @@ internal static class StageProfileRunner
         Console.WriteLine(fullPath);
     }
 
-    private static EngineStageProfile Profile(ChannelizerStrategy strategy, int iterations)
+    private static EngineStageProfile Profile(
+        ChannelizerStrategy strategy,
+        SimdPreference simdBackend,
+        int iterations)
     {
-        using (var warmup = ChannelizerFactory.Create(Request(strategy)))
+        using (var warmup = ChannelizerFactory.Create(Request(strategy, simdBackend)))
         {
             var warmInput = new ComplexF[warmup.InputRequirements.InputSize];
             warmup.Process(warmInput, 0, new CountingSink());
         }
 
-        using var engine = ChannelizerFactory.Create(Request(strategy));
+        using var engine = ChannelizerFactory.Create(Request(strategy, simdBackend));
         var input = new ComplexF[engine.InputRequirements.InputSize];
         var sink = new CountingSink();
         var latencies = new long[iterations];
-        engine.Process(input, 0, sink);
-        var firstNew = (long)engine.InputRequirements.ChunkSize;
+        var firstNew = 0L;
+        for (var iteration = 0; iteration < StabilizationIterations; iteration++)
+        {
+            engine.Process(input, firstNew, sink);
+            firstNew += engine.InputRequirements.ChunkSize;
+        }
+
         var baseline = engine.Diagnostics.Snapshot;
         var workingSetBefore = Environment.WorkingSet;
         var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
@@ -83,6 +98,7 @@ internal static class StageProfileRunner
         var totalSeconds = processingTicks / (double)Stopwatch.Frequency;
         return new EngineStageProfile(
             Strategy: strategy.ToString(),
+            SelectedSimdBackend: engine.Plan.SelectedSimdBackend.ToString(),
             DspBackend: engine.Plan.DspBackend,
             FftSize: engine.Plan.FftSize,
             HopSize: engine.Plan.HopSize,
@@ -113,7 +129,7 @@ internal static class StageProfileRunner
             Checksum: sink.Checksum);
     }
 
-    private static ChannelizerRequest Request(ChannelizerStrategy strategy)
+    private static ChannelizerRequest Request(ChannelizerStrategy strategy, SimdPreference simdBackend)
     {
         var channels = Enumerable.Range(0, ChannelCount)
             .Select(index => new ChannelRequest(
@@ -127,13 +143,13 @@ internal static class StageProfileRunner
         var hints = strategy == ChannelizerStrategy.Fdc
             ? new ChannelizerImplementationHints(
                 FdcDecimationFactor: 32,
-                Simd: SimdPreference.Scalar,
+                Simd: simdBackend,
                 Diagnostics: DiagnosticsMode.StageTiming)
             : new ChannelizerImplementationHints(
                 PfbFftSize: 64,
                 PfbHopSize: 32,
                 PfbFramesPerBatch: 128,
-                Simd: SimdPreference.Scalar,
+                Simd: simdBackend,
                 Diagnostics: DiagnosticsMode.StageTiming);
         return new ChannelizerRequest(
             SampleRate,
@@ -190,6 +206,7 @@ internal static class StageProfileRunner
 
     private sealed record EngineStageProfile(
         string Strategy,
+        string SelectedSimdBackend,
         string DspBackend,
         int? FftSize,
         int? HopSize,

@@ -35,11 +35,29 @@ public sealed class ContractTests
     }
 
     [Test]
-    public void ForcedSimdIsRejectedForScalarFoundation()
+    public void ForcedAvx2IsSelectedWhenSupportedAndRejectedOtherwise()
     {
         var request = Request(ChannelizerStrategy.Fdc, [Channel(1, 0)]) with
         {
             Hints = new ChannelizerImplementationHints(Simd: SimdPreference.Avx2)
+        };
+        if (System.Runtime.Intrinsics.X86.Avx2.IsSupported && System.Runtime.Intrinsics.X86.Fma.IsSupported)
+        {
+            using var engine = ChannelizerFactory.Create(request);
+            Assert.That(engine.Plan.SelectedSimdBackend, Is.EqualTo(SimdPreference.Avx2));
+        }
+        else
+        {
+            Assert.That(() => ChannelizerFactory.Create(request), Throws.TypeOf<PlatformNotSupportedException>());
+        }
+    }
+
+    [Test]
+    public void ForcedAvx512RemainsBehindBenchmarkGate()
+    {
+        var request = Request(ChannelizerStrategy.Fdc, [Channel(1, 0)]) with
+        {
+            Hints = new ChannelizerImplementationHints(Simd: SimdPreference.Avx512)
         };
         Assert.That(() => ChannelizerFactory.Create(request), Throws.TypeOf<NotSupportedException>());
     }

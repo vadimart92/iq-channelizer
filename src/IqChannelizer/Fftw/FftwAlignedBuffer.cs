@@ -4,6 +4,9 @@ namespace IqChannelizer.Fftw;
 
 internal sealed unsafe class FftwAlignedBuffer<T> : IDisposable where T : unmanaged
 {
+    private const int RequiredAlignment = 64;
+
+    private nint _allocation;
     private nint _pointer;
     private bool _disposed;
 
@@ -17,16 +20,19 @@ internal sealed unsafe class FftwAlignedBuffer<T> : IDisposable where T : unmana
         _ = FftwRuntime.Info;
         Length = length;
         ByteCount = checked((nuint)length * (nuint)Unsafe.SizeOf<T>());
-        _pointer = FftwNative.Malloc(ByteCount);
-        if (_pointer == 0)
+        var allocationBytes = checked(ByteCount + (nuint)(RequiredAlignment - 1));
+        _allocation = FftwNative.Malloc(allocationBytes);
+        if (_allocation == 0)
         {
-            throw new OutOfMemoryException($"FFTW could not allocate {ByteCount} bytes of aligned native memory.");
+            throw new OutOfMemoryException($"FFTW could not allocate {allocationBytes} bytes of aligned native memory.");
         }
 
-        if (Address % 16 != 0)
+        var allocationAddress = (nuint)_allocation;
+        _pointer = (nint)((allocationAddress + (RequiredAlignment - 1)) & ~(nuint)(RequiredAlignment - 1));
+        if (Address % RequiredAlignment != 0)
         {
             Dispose();
-            throw new InvalidOperationException("fftwf_malloc returned memory that is not at least 16-byte aligned.");
+            throw new InvalidOperationException($"Could not align FFTW-owned memory to {RequiredAlignment} bytes.");
         }
 
         AlignmentClass = FftwNative.AlignmentOf(_pointer);
@@ -64,9 +70,10 @@ internal sealed unsafe class FftwAlignedBuffer<T> : IDisposable where T : unmana
             return;
         }
 
-        if (_pointer != 0)
+        if (_allocation != 0)
         {
-            FftwNative.Free(_pointer);
+            FftwNative.Free(_allocation);
+            _allocation = 0;
             _pointer = 0;
         }
 
