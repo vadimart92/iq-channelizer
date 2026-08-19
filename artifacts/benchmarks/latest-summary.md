@@ -2,8 +2,8 @@
 
 ## Identity
 
-- Measured source state: `998d427+avx512-working-tree`.
-- Generated: 2026-08-19.
+- Measured source state: `738b0d6+step17-working-tree`.
+- Generated: 2026-08-20.
 - BenchmarkDotNet: 0.15.8; end-to-end engine comparison uses the default statistical job.
 - CPU: AMD Ryzen 5 8500G, 6 physical / 12 logical cores, high-performance power plan during BDN runs.
 - OS/runtime: Windows 11 10.0.26200.9168, .NET 10.0.11 x64 RyuJIT x86-64-v4.
@@ -17,8 +17,9 @@ dotnet run --project benchmarks/IqChannelizer.Benchmarks -c Release --no-build -
 ```
 
 Kernel evidence used short statistical jobs to make the production-wiring decision; the retained
-reports record their exact job metadata. The schema-v2 stage profile uses 8,192 same-engine
-stabilization calls followed by 5,000 measured calls.
+reports record their exact job metadata. The Step 17 common-tap run used one warmup and three
+measurement iterations for every scalar, forced-generic and dispatched SIMD case. The schema-v2
+stage profile uses 8,192 same-engine stabilization calls followed by 5,000 measured calls.
 
 ## Statistical end-to-end results
 
@@ -40,7 +41,21 @@ host/configurations and are not a portable realtime claim.
 
 ## Kernel decisions
 
-- PFB FIR, 8 taps/phase: scalar 8.991, expanded AVX2 3.658, expanded AVX-512 3.242 ns/input sample; 20 taps/phase: 21.169, 8.171 and 6.734 respectively.
+- PFB FIR common-tap specialization was accepted for all eight measured ISA/tap pairs. Every
+  dispatched kernel allocated 0 B and exceeded the required 5% advantage over its forced-generic
+  counterpart:
+
+| Taps/phase | AVX2 specialized | AVX2 generic | Gain | AVX-512 specialized | AVX-512 generic | Gain |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 4 | 1.491 | 2.061 | 27.7% | 1.631 | 1.722 | 5.3% |
+| 8 | 3.386 | 3.688 | 8.2% | 2.561 | 3.320 | 22.9% |
+| 12 | 3.492 | 5.440 | 35.8% | 3.504 | 4.731 | 25.9% |
+| 16 | 6.567 | 10.085 | 34.9% | 5.460 | 8.390 | 34.9% |
+
+  Values are ns/input sample from the retained short run. `TapsPerPhase=20` remains the generic
+  fallback; its dispatch/generic means were 9.590/10.222 ns for AVX2 and 6.832/7.765 ns for
+  AVX-512. Both pairs execute the same generic code after batch dispatch, so their short-run
+  difference is noise and is not treated as specialization evidence.
 - FDC complex extraction after equal validation policy, 128 bins: scalar 124.68, AVX2 35.10, AVX-512 33.71 ns; 512 bins: 503.92, 122.41 and 102.05 ns.
 - Residual rotator: 1.886 -> 1.853 ns/sample in the short run. The delta was not decision-grade, so production retains the scalar rotator.
 - AVX-512F is accepted for both forced backends and selected automatically for PFB on supporting hosts.

@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "status": "passed",
-  "generatedOn": "2026-08-19",
+  "generatedOn": "2026-08-20",
   "suite": "SignalValidationAcceptanceTests",
   "command": "dotnet test IqChannelizer.sln -c Release --no-restore",
   "reproducibility": {
@@ -12,7 +12,10 @@
   "acceptance": {
     "maximumBlockerRms": 0.0032,
     "maximumFdcReferenceComplexError": 0.0002,
-    "halfBinAmplitudeTolerance": 0.0006
+    "halfBinAmplitudeTolerance": 0.0006,
+    "minimumPfbBlockerAttenuationDb": 80,
+    "maximumPfbWantedReferenceComplexError": 0.000004,
+    "maximumPfbCombinedErrorRms": 0.0001
   },
   "engines": {
     "fdc": {
@@ -23,13 +26,41 @@
     "pfb": {
       "fftSize": 8,
       "hopSize": 2,
+      "framesPerBatch": 64,
       "fineDecimationFactor": 8,
       "totalDecimationFactor": 16,
       "aliasImagesSwept": 15,
+      "requestedStopbandAttenuationDb": 80,
       "prototypeModesSwept": [
         "Conservative",
         "FoldAware"
       ],
+      "edgeCentersHz": [
+        0,
+        63.875,
+        -63.875,
+        64,
+        -64,
+        64.125,
+        -64.125,
+        511.875,
+        -511.875
+      ],
+      "blockerOffsetsHz": [
+        -128,
+        128
+      ],
+      "wantedAmplitude": 0.001,
+      "blockerAmplitude": 1,
+      "adjacentCasesPerMode": 18,
+      "minimumMeasuredAdjacentBlockerAttenuationDb": {
+        "Conservative": 128.19781579752956,
+        "FoldAware": 128.20906655240512
+      },
+      "maximumMeasuredCombinedErrorRms": {
+        "Conservative": 3.9079777375668386e-7,
+        "FoldAware": 3.922251782334587e-7
+      },
       "halfBinResidualsHz": [
         -64,
         64

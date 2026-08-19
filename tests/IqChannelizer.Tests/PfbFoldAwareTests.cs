@@ -21,7 +21,8 @@ public sealed class PfbFoldAwareTests
         {
             Assert.That(foldAware.DesignMode, Is.EqualTo(PfbPrototypeDesignMode.FoldAware));
             Assert.That(foldAware.Taps.Length, Is.LessThan(conservative.Taps.Length));
-            Assert.That(foldAware.AliasedResponse.WorstAliasAttenuationDb, Is.GreaterThanOrEqualTo(50));
+            Assert.That(conservative.AliasedResponse.WorstAliasAttenuationDb, Is.GreaterThanOrEqualTo(80));
+            Assert.That(foldAware.AliasedResponse.WorstAliasAttenuationDb, Is.GreaterThanOrEqualTo(80));
             Assert.That(foldAware.Taps.Length % 8, Is.Zero);
         });
     }
@@ -31,9 +32,12 @@ public sealed class PfbFoldAwareTests
     {
         var request = Request(PfbPrototypeDesignMode.FoldAware);
         using var engine = ChannelizerFactory.Create(request);
+        const int frames = 8;
+        var fine = PfbFineStageDesigner.Design(request.Channels[0], 1024 / 2d, frames);
+        var warmupBlocks = 2 + ((fine.Taps.Length - 1 + frames - 1) / frames);
         ComplexF[]? actual = null;
         const long initialFirstNew = 4_000_003;
-        for (var block = 0; block < 20; block++)
+        for (var block = 0; block < warmupBlocks; block++)
         {
             var firstNew = initialFirstNew + ((long)block * engine.InputRequirements.ChunkSize);
             var input = DeterministicSignals.Tone(
@@ -60,7 +64,7 @@ public sealed class PfbFoldAwareTests
 
     private static ChannelizerRequest Request(PfbPrototypeDesignMode mode) => new(
         1024,
-        [new ChannelRequest(1, 0, 20, 20, 50, 0.2)],
+        [new ChannelRequest(1, 0, 20, 20, 80, 0.2)],
         ChannelizerStrategy.Pfb,
         new InputBlockConstraints(16, 16),
         new ChannelizerImplementationHints(

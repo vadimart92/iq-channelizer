@@ -10,6 +10,7 @@ namespace IqChannelizer.Tests;
 public sealed class SignalValidationAcceptanceTests
 {
     private const double SampleRate = 1024;
+    private const double PfbAcceptanceAttenuationDb = 80;
     private const int Seed = 20260819;
 
     [Test]
@@ -23,13 +24,21 @@ public sealed class SignalValidationAcceptanceTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(root.GetProperty("schemaVersion").GetInt32(), Is.EqualTo(2));
+            Assert.That(root.GetProperty("schemaVersion").GetInt32(), Is.EqualTo(3));
             Assert.That(root.GetProperty("status").GetString(), Is.EqualTo("passed"));
             Assert.That(root.GetProperty("reproducibility").GetProperty("seed").GetInt32(), Is.EqualTo(Seed));
             Assert.That(engines.GetProperty("fdc").GetProperty("aliasImagesSwept").GetInt32(), Is.EqualTo(7));
             Assert.That(engines.GetProperty("pfb").GetProperty("aliasImagesSwept").GetInt32(), Is.EqualTo(15));
             Assert.That(engines.GetProperty("pfb").GetProperty("prototypeModesSwept").EnumerateArray()
                 .Select(value => value.GetString()), Is.EqualTo(new[] { "Conservative", "FoldAware" }));
+            Assert.That(engines.GetProperty("pfb").GetProperty("framesPerBatch").GetInt32(), Is.EqualTo(64));
+            Assert.That(engines.GetProperty("pfb").GetProperty("requestedStopbandAttenuationDb").GetDouble(),
+                Is.EqualTo(PfbAcceptanceAttenuationDb));
+            Assert.That(engines.GetProperty("pfb").GetProperty("blockerOffsetsHz").EnumerateArray()
+                .Select(value => value.GetDouble()), Is.EqualTo(new[] { -128d, 128d }));
+            Assert.That(engines.GetProperty("pfb").GetProperty("minimumMeasuredAdjacentBlockerAttenuationDb")
+                    .EnumerateObject().Select(property => property.Value.GetDouble()),
+                Has.All.GreaterThanOrEqualTo(PfbAcceptanceAttenuationDb));
             Assert.That(root.GetProperty("filters").GetProperty("decimationFactors").EnumerateArray()
                 .Select(value => value.GetInt32()), Is.EqualTo(new[] { 2, 4, 8 }));
         });
@@ -76,8 +85,14 @@ public sealed class SignalValidationAcceptanceTests
     {
         const int fftSize = 8;
         const int hopSize = 2;
-        const int frames = 8;
-        var request = PfbRequest(centerFrequencyHz: 0, fftSize, hopSize, frames, designMode);
+        const int frames = 64;
+        var request = PfbRequest(
+            centerFrequencyHz: 0,
+            fftSize,
+            hopSize,
+            frames,
+            designMode,
+            PfbAcceptanceAttenuationDb);
         var fine = PfbFineStageDesigner.Design(request.Channels[0], SampleRate / hopSize, frames);
         var totalDecimation = hopSize * fine.DecimationFactor;
         var blockerFrequencies = AliasImageFrequencies(totalDecimation);
@@ -106,9 +121,70 @@ public sealed class SignalValidationAcceptanceTests
                 actual = ProcessSingle(engine, input, firstNew);
             }
 
-            Assert.That(Rms(actual!), Is.LessThan(0.0032),
+            Assert.That(AttenuationDb(actual!, blockerAmplitude: 1), Is.GreaterThanOrEqualTo(PfbAcceptanceAttenuationDb),
                 $"seed={Seed}, strategy=Pfb, mode={designMode}, K={fftSize}, H={hopSize}, Dfine={fine.DecimationFactor}, blocker={blockerFrequency:R} Hz");
         }
+    }
+
+    [TestCaseSource(nameof(PfbEdgeBlockerCases))]
+    public void PfbAdjacentBlockerAtBinEdgesMeetsEightyDb(
+        PfbPrototypeDesignMode designMode,
+        double centerFrequencyHz,
+        int expectedCoarseBin,
+        int blockerDirection)
+    {
+        const int fftSize = 8;
+        const int hopSize = 2;
+        const int frames = 64;
+        const double wantedAmplitude = 0.001;
+        const double blockerAmplitude = 1;
+        const double binSpacingHz = SampleRate / fftSize;
+        var blockerFrequencyHz = WrapFrequency(centerFrequencyHz + (blockerDirection * binSpacingHz));
+        var request = PfbRequest(
+            centerFrequencyHz,
+            fftSize,
+            hopSize,
+            frames,
+            designMode,
+            PfbAcceptanceAttenuationDb);
+
+        var wanted = ProcessPfbSignal(
+            request,
+            centerFrequencyHz,
+            wantedAmplitude,
+            blockerFrequencyHz,
+            blockerAmplitude: 0);
+        var blocker = ProcessPfbSignal(
+            request,
+            centerFrequencyHz,
+            wantedAmplitude: 0,
+            blockerFrequencyHz,
+            blockerAmplitude);
+        var combined = ProcessPfbSignal(
+            request,
+            centerFrequencyHz,
+            wantedAmplitude,
+            blockerFrequencyHz,
+            blockerAmplitude);
+        var expectedWanted = ReferencePfbWanted(request, wanted, wantedAmplitude);
+        var configuration =
+            $"mode={designMode}, center={centerFrequencyHz:R}, blocker={blockerFrequencyHz:R}, side={blockerDirection}";
+        var minimumWantedRms = wantedAmplitude * Math.Pow(10, -request.Channels[0].PassbandRippleDb / 20);
+        var maximumWantedRms = wantedAmplitude * Math.Pow(10, request.Channels[0].PassbandRippleDb / 20);
+        var blockerAttenuationDb = AttenuationDb(blocker.Samples, blockerAmplitude);
+        var combinedErrorRms = RmsDifference(combined.Samples, wanted.Samples);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(wanted.Channel.CoarseBin, Is.EqualTo(expectedCoarseBin), configuration);
+            Assert.That(wanted.Samples, Has.Length.EqualTo(frames / wanted.Channel.FineDecimationFactor), configuration);
+            AssertSignals(expectedWanted, wanted.Samples, 4e-6, configuration);
+            Assert.That(Rms(wanted.Samples), Is.InRange(minimumWantedRms, maximumWantedRms), configuration);
+            Assert.That(blockerAttenuationDb, Is.GreaterThanOrEqualTo(PfbAcceptanceAttenuationDb), configuration);
+            Assert.That(combinedErrorRms,
+                Is.LessThanOrEqualTo(Math.Pow(10, -PfbAcceptanceAttenuationDb / 20) * blockerAmplitude),
+                configuration);
+        });
     }
 
     [TestCase(-64d)]
@@ -189,9 +265,10 @@ public sealed class SignalValidationAcceptanceTests
         int fftSize,
         int hopSize,
         int frames,
-        PfbPrototypeDesignMode designMode = PfbPrototypeDesignMode.Conservative) => new(
+        PfbPrototypeDesignMode designMode = PfbPrototypeDesignMode.Conservative,
+        double stopbandAttenuationDb = 50) => new(
         SampleRate,
-        [new ChannelRequest(202, centerFrequencyHz, 20, 20, 50, 0.2)],
+        [new ChannelRequest(202, centerFrequencyHz, 20, 20, stopbandAttenuationDb, 0.2)],
         ChannelizerStrategy.Pfb,
         new InputBlockConstraints(frames * hopSize, frames * hopSize),
         new ChannelizerImplementationHints(
@@ -212,6 +289,137 @@ public sealed class SignalValidationAcceptanceTests
         }
 
         return result;
+    }
+
+    private static IEnumerable<TestCaseData> PfbEdgeBlockerCases()
+    {
+        const double binSpacingHz = SampleRate / 8;
+        const double halfBinHz = binSpacingHz / 2;
+        const double epsilonHz = binSpacingHz / 1024;
+        (double CenterFrequencyHz, int ExpectedCoarseBin)[] centers =
+        [
+            (0, 0),
+            (halfBinHz - epsilonHz, 0),
+            (-halfBinHz + epsilonHz, 0),
+            (halfBinHz, 0),
+            (-halfBinHz, 0),
+            (halfBinHz + epsilonHz, 1),
+            (-halfBinHz - epsilonHz, 7),
+            ((SampleRate / 2) - epsilonHz, 4),
+            (-(SampleRate / 2) + epsilonHz, 4)
+        ];
+
+        foreach (var designMode in Enum.GetValues<PfbPrototypeDesignMode>())
+        {
+            foreach (var (centerFrequencyHz, expectedCoarseBin) in centers)
+            {
+                foreach (var blockerDirection in new[] { -1, 1 })
+                {
+                    yield return new TestCaseData(designMode, centerFrequencyHz, expectedCoarseBin, blockerDirection)
+                        .SetName(
+                            $"PfbAdjacentBlocker_{designMode}_Center{centerFrequencyHz:R}_Side{blockerDirection}");
+                }
+            }
+        }
+    }
+
+    private static PfbSignalRun ProcessPfbSignal(
+        ChannelizerRequest request,
+        double wantedFrequencyHz,
+        double wantedAmplitude,
+        double blockerFrequencyHz,
+        double blockerAmplitude)
+    {
+        using var engine = ChannelizerFactory.Create(request);
+        var hints = request.Hints!;
+        var frames = hints.PfbFramesPerBatch!.Value;
+        var hopSize = hints.PfbHopSize!.Value;
+        var fine = PfbFineStageDesigner.Design(request.Channels[0], SampleRate / hopSize, frames);
+        var warmupBlocks = 2 + ((fine.Taps.Length - 1 + frames - 1) / frames);
+        const long initialFirstNew = 40_000_003;
+        ComplexF[]? samples = null;
+        long finalFirstNew = 0;
+        for (var block = 0; block < warmupBlocks; block++)
+        {
+            finalFirstNew = initialFirstNew + ((long)block * engine.InputRequirements.ChunkSize);
+            var input = DeterministicSignals.Blocker(
+                engine.InputRequirements.InputSize,
+                wantedFrequencyHz,
+                wantedAmplitude,
+                blockerFrequencyHz,
+                blockerAmplitude,
+                SampleRate,
+                finalFirstNew - engine.InputRequirements.HistorySize);
+            samples = ProcessSingle(engine, input, finalFirstNew);
+        }
+
+        return new PfbSignalRun(samples!, engine.Plan.Channels.Single(), finalFirstNew);
+    }
+
+    private static Complex[] ReferencePfbWanted(
+        ChannelizerRequest request,
+        PfbSignalRun run,
+        double wantedAmplitude)
+    {
+        var hints = request.Hints!;
+        var fftSize = hints.PfbFftSize!.Value;
+        var hopSize = hints.PfbHopSize!.Value;
+        var frames = hints.PfbFramesPerBatch!.Value;
+        var mode = hints.PfbPrototypeDesign;
+        var prototype = PfbPrototypeDesign.Design(request, fftSize, hopSize, mode);
+        var fine = PfbFineStageDesigner.Design(request.Channels[0], SampleRate / hopSize, frames);
+        var effective = ConvolveAtHop(prototype.Taps, fine.Taps, hopSize, run.Channel.ResidualFrequencyHz);
+        var outputCount = frames / fine.DecimationFactor;
+        var firstAnchor = run.FinalFirstNewSampleIndex + hopSize - 1;
+        var referenceStart = firstAnchor - (effective.Length - 1);
+        var referenceInput = DeterministicSignals.Tone(
+            effective.Length + ((outputCount - 1) * hopSize * fine.DecimationFactor),
+            request.Channels[0].CenterFrequencyHz,
+            SampleRate,
+            referenceStart,
+            wantedAmplitude);
+        return ReferenceDdc.ProcessComplexTaps(
+            referenceInput,
+            referenceStart,
+            SampleRate,
+            request.Channels[0].CenterFrequencyHz,
+            effective,
+            hopSize * fine.DecimationFactor).Samples;
+    }
+
+    private static Complex[] ConvolveAtHop(
+        IReadOnlyList<float> prototype,
+        IReadOnlyList<float> fine,
+        int hopSize,
+        double residualFrequencyHz)
+    {
+        var result = new Complex[prototype.Count + ((fine.Count - 1) * hopSize)];
+        for (var fineIndex = 0; fineIndex < fine.Count; fineIndex++)
+        {
+            for (var prototypeIndex = 0; prototypeIndex < prototype.Count; prototypeIndex++)
+            {
+                var residualPhase = -2 * Math.PI * residualFrequencyHz * prototypeIndex / SampleRate;
+                result[prototypeIndex + (fineIndex * hopSize)] +=
+                    Complex.FromPolarCoordinates(fine[fineIndex] * prototype[prototypeIndex], residualPhase);
+            }
+        }
+
+        return result;
+    }
+
+    private static double WrapFrequency(double frequencyHz)
+    {
+        var wrapped = frequencyHz % SampleRate;
+        if (wrapped >= SampleRate / 2)
+        {
+            wrapped -= SampleRate;
+        }
+        else if (wrapped < -SampleRate / 2)
+        {
+            wrapped += SampleRate;
+        }
+
+        return wrapped;
     }
 
     private static string FindRepositoryRoot()
@@ -237,6 +445,28 @@ public sealed class SignalValidationAcceptanceTests
 
     private static double Rms(IReadOnlyList<ComplexF> samples) =>
         Math.Sqrt(samples.Average(sample => sample.Magnitude * sample.Magnitude));
+
+    private static double AttenuationDb(IReadOnlyList<ComplexF> samples, double blockerAmplitude)
+    {
+        var ratio = Rms(samples) / blockerAmplitude;
+        return ratio == 0 ? double.PositiveInfinity : -20 * Math.Log10(ratio);
+    }
+
+    private static double RmsDifference(IReadOnlyList<ComplexF> left, IReadOnlyList<ComplexF> right)
+    {
+        Assert.That(left, Has.Count.EqualTo(right.Count));
+        return Math.Sqrt(left.Zip(right, (first, second) =>
+        {
+            var real = first.Real - second.Real;
+            var imaginary = first.Imaginary - second.Imaginary;
+            return (real * real) + (imaginary * imaginary);
+        }).Average());
+    }
+
+    private sealed record PfbSignalRun(
+        ComplexF[] Samples,
+        ResolvedChannelPlan Channel,
+        long FinalFirstNewSampleIndex);
 
     private static void AssertSignals(
         IReadOnlyList<Complex> expected,

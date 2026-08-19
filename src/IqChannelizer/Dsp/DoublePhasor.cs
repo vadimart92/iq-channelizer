@@ -40,7 +40,7 @@ internal readonly record struct DoublePhasor(double Real, double Imaginary)
     public ComplexF Multiply(ComplexF value) => new(
         (float)((value.Real * Real) - (value.Imaginary * Imaginary)),
         (float)((value.Real * Imaginary) + (value.Imaginary * Real)));
-    
+
     internal static DoublePhasor Create(
         double frequencyHz,
         double sampleRateHz,
@@ -56,7 +56,7 @@ internal readonly record struct DoublePhasor(double Real, double Imaginary)
         var fractionalCycles = FractionalCyclesAt(frequencyHz, sampleRateHz, absoluteSampleIndex);
         return (float)(-2 * Math.PI * fractionalCycles);
     }
-    
+
     private static double FractionalCyclesAt(
         double frequencyHz,
         double sampleRateHz,

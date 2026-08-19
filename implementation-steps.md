@@ -16,12 +16,12 @@
 
 ## Остання перевірка
 
-- Дата: **2026-08-19**
-- Verified implementation base commit: `f050397` + **uncommitted Step 16 residual rotator changeset**
-- Release tests: **257 passed, 0 failed, 0 skipped**
+- Дата: **2026-08-20**
+- Verified implementation base commit: `738b0d6` + **uncommitted Step 17 working tree**
+- Release tests: **301 passed, 0 failed, 0 skipped**
 - Companion tool: **27/27 Vitest**, production Vite build successful
-- Benchmarks: retained **18-case scalar/AVX2/AVX-512 engine comparison**, SIMD kernel comparisons, schema-v2 allocation/latency/stage profile, Step 14 FoldAware/selected-bin comparison та Step 16 residual rotator BDN disassembly
-- Найближчий implementation step: **немає; кроки 0–16 і поточний Definition of Done виконані**
+- Benchmarks: retained **18-case scalar/AVX2/AVX-512 engine comparison**, Step 17 scalar/forced-generic/dispatched PFB FIR matrix for taps `4/8/12/16/20`, schema-v2 allocation/latency/stage profile, Step 14 FoldAware/selected-bin comparison та Step 16 residual rotator BDN disassembly
+- Найближчий implementation step: **немає; кроки 0–17 і поточний Definition of Done виконані**
 - Release packaging: **managed-only NuGet verified; FFTW не входить до package і постачається consumer-ом окремо**
 
 ## Зведена таблиця
@@ -45,6 +45,7 @@
 | 14. FoldAware/selected-bin experiments | виконано | Explicit FoldAware пройшов folded/blocker correctness і measured end-to-end comparison; selected-bin direct DFT має stored crossover evidence та лишається unwired |
 | 15. Facade/docs/Auto | виконано | Facade/docs, managed-only package, exact profile-backed strategy `Auto` і named 100 MS/s target evidence виконано |
 | 16. True SIMD residual rotator | виконано | Stateful `Rotator` API: `SetPhase(float)` / `SetPhaseFromAbsoluteIndex(...)` setup + `RotateInPlace(Span<ComplexF>)`; AVX2 lane coefficients генеруються SIMD-ом; 257/257 Release tests; BDN AVX2 `0.3879 ns/sample`, 0 B allocated, asm verified |
+| 17. Common-tap PFB kernels і 80 dB spectral acceptance | виконано | AVX2/AVX-512 specialized dispatch для `TapsPerPhase=4/8/12/16`, generic fallback для `5/20` та інших shapes; schema-v3 edge/blocker matrix для Conservative/FoldAware; 301/301 Release tests; усі 8 specialized ISA/tap pairs пройшли 0 B / >=5% benchmark gate |
 
 ## Детальні кроки
 
@@ -337,5 +338,47 @@
 **Evidence:** `src/IqChannelizer/Dsp/Rotator.cs` now contains stateful `Rotator` with `SetPhase(float)`, `SetPhaseFromAbsoluteIndex(long)` and `RotateInPlace(Span<ComplexF>)`; legacy `ScalarRotator.RotateInPlaceAvx2(...)` was removed. FDC/PFB engines own per-channel `Rotator` instances and anchor absolute phase only on first processing after construction/reset via `_residualRotatorsAnchored`. The steady-state residual path calls only `RotateInPlace(...)`, so sequential calls advance the stored phase without rebuilding it from absolute index. Higher-level stream consistency remains responsible for detecting gaps/drops and forcing reset/re-anchor when needed. `tests/IqChannelizer.Tests/SimdTests.cs` covers tails, 16k boundary, large absolute origins, split boundaries, sequential stateful calls and zero allocations. `benchmarks/IqChannelizer.Benchmarks/SimdPrimitiveBenchmarks.cs` benchmarks the stateful API with `DisassemblyDiagnoser`; setup phase is outside measured methods.
 
 **Benchmark/ASM evidence:** `dotnet run -c Release --project benchmarks\IqChannelizer.Benchmarks\IqChannelizer.Benchmarks.csproj -- --filter *ResidualRotatorBenchmarks* --job Short --warmupCount 1 --iterationCount 3` produced `BenchmarkDotNet.Artifacts/results/IqChannelizer.Benchmarks.ResidualRotatorBenchmarks-asm.md`. Summary on Ryzen 5 8500G / .NET 10.0.11: scalar `1.8639 ns/sample`, AVX2 `0.4938 ns/sample`, ratio `0.26`, 0 B allocated. Hot loop contains repeated `vmulps`/`vaddsubps`/`vmovups` for SIMD lane coefficient generation and complex sample multiplication. The measured benchmark body calls only `RotateInPlace(...)`; no `SetPhase(...)` or `SetPhaseFromAbsoluteIndex(...)` appears there. Remaining scalar `vmulsd` operations are base phase advance, periodic normalization and scalar tail handling, not per-lane coefficient generation.
+
+**Known blocker:** none. Наступного implementation step немає.
+
+### Крок 17. Спеціалізувати common-tap PFB kernels і посилити spectral acceptance до 80 dB
+
+**Статус: виконано.** Base commit `738b0d6` + uncommitted Step 17 working tree; 301/301 Release tests.
+
+- У `PfbPhaseFir.cs` production AVX2/AVX-512 entry points один раз на batch dispatch-ять
+  `TapsPerPhase=4/8/12/16` у fully unrolled common-tap kernels. Phase-vector loops не містять
+  tap switch або runtime tap loop; circular-shift store, scalar prefix/suffix, expanded coefficient
+  layout, validation і zero-allocation behavior збережені.
+- Forced-generic AVX2/AVX-512 entry points лишилися internal correctness/benchmark baseline;
+  unsupported tap counts, включно з `5/20`, маршрутизуються в generic expanded kernel.
+  `FillBatchAvx2Compact` не спеціалізований.
+- `PfbSimdTests` зіставляє scalar, forced generic і dispatched paths для обох ISA, common/fallback
+  taps, positive/negative origins, aligned/misaligned shifts, scalar tails і різних `K/H/Frames`;
+  steady state залишається allocation-free. ISA-dependent cases skip-яться лише за фізичної
+  відсутності backend.
+- `SignalValidationAcceptanceTests` використовує `Fs=1024`, `K=8`, `H=2`, `Frames=64` і request
+  `80 dB`. Conservative та FoldAware проходять center matrix `0`, `+/-63.875`, `+/-64`,
+  `+/-64.125` Hz і Nyquist-wrap cases з blockers `+/-128 Hz`, wanted-only, blocker-only та
+  combined wanted `0.001` + blocker `1.0` runs на нових engines після повного FIR warm-up.
+- Exact half-bin зберігає tie-to-even `Math.Round`; coarse bin змінюється одразу за межею без
+  amplitude/phase discontinuity. Independent DDC tolerance, >=80 dB blocker attenuation та
+  combined-error <=`1e-4` gates виконані. Мінімум: Conservative `128.198 dB`, FoldAware
+  `128.209 dB`; максимальна combined error відповідно `3.908e-7` і `3.922e-7` від blocker amplitude.
+- Повний PFB alias-image sweep переведено з absolute RMS threshold на ratio attenuation >=80 dB.
+  Обидва prototype modes окремо мають `AliasedResponse.WorstAliasAttenuationDb >= 80`, коректну
+  passband amplitude та однакові edge/blocker gates; representative FoldAware prototype коротший.
+  Standalone FoldAware stopband 80 dB не є контрактом.
+- Signal summary оновлений до schema version 3 з edge positions, blocker offsets, requested і
+  minimum measured attenuation для кожного mode.
+
+**Benchmark evidence:** `PfbFirBenchmarks` вимірює scalar, forced-generic і dispatched SIMD для
+tap counts `4/8/12/16/20`. Short BDN run (`1` warmup, `3` iterations) на Ryzen 5 8500G / .NET
+10.0.11 показав 0 B allocations і перевагу specialized над generic для всіх восьми production
+pairs у повторному run: AVX2 `27.7/8.2/35.8/34.9%`, AVX-512 `5.3/22.9/25.9/34.9%` для taps `4/8/12/16`.
+Отже всі common-tap pairs прийняті в production dispatch; tap count `20` лишається generic fallback.
+Retained Markdown/CSV збережені в `artifacts/benchmarks/results/`.
+
+**Verification note:** `dotnet format --verify-no-changes` доходить лише до трьох наявних до Step 17
+whitespace findings у `DoublePhasor.cs` і `FftwPfbEngine.cs`; ці unrelated файли не змінювалися.
 
 **Known blocker:** none. Наступного implementation step немає.

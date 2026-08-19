@@ -132,7 +132,7 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
                 Diagnostics.RecordFftwExecution(System.Diagnostics.Stopwatch.GetTimestamp() - fftStartedAt);
             }
         }
-        
+
         var firstAnchor = firstNewSampleIndex + _hopSize - 1;
         EnsureResidualRotatorsAnchored(firstAnchor);
         var channelStartedAt = Diagnostics.BeginTiming();

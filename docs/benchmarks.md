@@ -4,7 +4,8 @@ The existing benchmark project uses BenchmarkDotNet 0.15.8 and contains these fa
 
 - `PrimitiveBenchmarks`: scalar FIR work, normalized per output sample;
 - `FftwBenchmarks`: single-precision forward transform execution;
-- `PfbFirBenchmarks`: scalar versus AVX2 and AVX-512 phase-parallel direct-store FIR kernels;
+- `PfbFirBenchmarks`: scalar, forced-generic SIMD and dispatched AVX2/AVX-512 phase-parallel
+  direct-store FIR kernels for specialized taps `4/8/12/16` and fallback tap count `20`;
 - `PfbPrototypeBenchmarks`: Conservative versus explicit FoldAware end-to-end PFB processing;
 - `AlignedCriticalPfbBenchmarks`: aligned Conservative `H=K` prototype-only processing versus the corresponding oversampled shape;
 - `PfbSelectedBinBenchmarks`: FFTW+gather versus scalar/AVX2/AVX-512 direct-DFT crossover;
@@ -20,6 +21,19 @@ List or run the suites from the repository root:
 dotnet run --project benchmarks/IqChannelizer.Benchmarks -c Release -- --list flat
 dotnet run --project benchmarks/IqChannelizer.Benchmarks -c Release
 ```
+
+The retained Step 17 common-tap decision was produced with:
+
+```powershell
+dotnet run -c Release --no-restore `
+  --project benchmarks/IqChannelizer.Benchmarks/IqChannelizer.Benchmarks.csproj -- `
+  --filter "*PfbFirBenchmarks*" --job Short --warmupCount 1 --iterationCount 3
+```
+
+A specialized ISA/tap pair is production-enabled only when the repeated short run reports 0 B
+allocated and at least 5% improvement over its forced-generic SIMD counterpart. Other tap counts
+continue through the generic expanded-coefficient kernel; the compact AVX2 kernel remains a
+comparison baseline.
 
 Use `--job Dry --filter "*"` only to prove that every generated harness builds and runs.
 Dry measurements have one sample and are not performance evidence. A decision-grade run

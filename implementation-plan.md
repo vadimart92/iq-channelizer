@@ -2672,7 +2672,7 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 
 ## 17. Поточний стан і execution checklist для sub-агента
 
-Цей розділ є аудитом repository станом на **2026-08-19**, перевіреним на base commit `3a39739` + current target 100 MS/s evidence changeset. Він не змінює вимоги розділів 1–16. Операційна черга винесена в [`implementation-steps.md`](implementation-steps.md); якщо tracker конфліктує з математичним або API contract цього документа, пріоритет мають розділи 1–16.
+Цей розділ є аудитом repository станом на **2026-08-20**, перевіреним на base commit `738b0d6` + Step 17 working tree. Він не змінює вимоги розділів 1–16. Операційна черга винесена в [`implementation-steps.md`](implementation-steps.md); якщо tracker конфліктує з математичним або API contract цього документа, пріоритет мають розділи 1–16.
 
 ### 17.1. Звірка поточної реалізації з планом
 
@@ -2694,14 +2694,14 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 | Phase 5: SIMD foundation | готово (AVX2/AVX-512 + true SIMD residual rotator) | Creation-time `Auto/Scalar/Avx2/Avx512` resolution, scalar fallback, actionable unsupported behavior, 64-byte FFTW buffers, tested AoS primitives, FDC extraction, PFB phase-parallel direct-store kernels і stateful residual `Rotator` API | AVX2 residual rotator використовує `SetPhase(float phase)`/`SetPhaseFromAbsoluteIndex(...)` setup і `RotateInPlace(Span<ComplexF>)` hot API; lane phase coefficients генеруються SIMD-ом у loop, scalar double лишається тільки для base phase advance/normalization |
 | Phase 6: FDC MVP | готово | Реальний multi-D overlap-save: per-channel power-of-two planner, aligned shared history/chunk/N, full `[history|chunk]` FFT once, causal Kaiser anti-alias response з alias budget і folded validation, grouped short backward plans, exact discard, explicit `1/N`, absolute phase, independent-DDC та alias-sweep acceptance | Benchmark-backed planner cost model лишається майбутнім profile-driven scope; forced hint залишається global override |
 | Phase 7: PFB algebra MVP | готово | Generic `K/H`; Conservative Kaiser `T=K*P`, `P>1` scalar branch equation; exact FIR group delay; independent double direct FIR+DFT oracle; explicit correction/pre-FFT shift equivalence; `H=K`, `H=K/2`, arbitrary H, signed-bin, non-aligned-origin і partition tests | Немає для algebra scope; production SIMD реалізований у Phase 8 |
-| Phase 8: PFB production path | готово (scalar/AVX2/AVX-512) | Filtered phase vectors пишуться прямо у FFTW-owned input; AVX2/AVX-512 vectorize four/eight phases with expanded coefficients and direct two-segment rotated store; batched transform; precomputed unique-bin gather/fan-out; periodic residual rotation; per-channel validated stateful power-of-two fine FIR/decimator; exact counts/delays; Reset/no-allocation/independent-DDC tests | fine-stage specialization лишається measured future scope |
+| Phase 8: PFB production path | готово (scalar/AVX2/AVX-512) | Filtered phase vectors пишуться прямо у FFTW-owned input; AVX2/AVX-512 vectorize four/eight phases with expanded coefficients and direct two-segment rotated store; taps `4/8/12/16` мають batch-dispatched unrolled kernels, інші tap counts використовують forced-testable generic fallback; batched transform; precomputed unique-bin gather/fan-out; periodic residual rotation; per-channel validated stateful power-of-two fine FIR/decimator; exact counts/delays; Reset/no-allocation/independent-DDC tests | fine-stage specialization лишається measured future scope |
 | Phase 9: generalized PFB planner | готово (Conservative default + explicit FoldAware) | Deterministic power-of-two `K`, arbitrary integer `H`, bounded frames, geometry/output/chunk feasibility, exact Conservative/FoldAware/fine validation, partial/forced hints, non-2× end-to-end selection | Benchmark-backed ranking і automatic FoldAware selection лишаються окремими profile gates |
-| Phase 10: performance tuning | готово для recorded scope | Retained 18-case scalar/AVX2/AVX-512 engine matrix; SIMD kernel comparisons; zero-allocation stage profiles; PFB AVX-512 та explicit FoldAware benefit; named target PFB sustained 199.17 MS/s | Result не є portable guarantee |
+| Phase 10: performance tuning | готово для recorded scope | Retained 18-case scalar/AVX2/AVX-512 engine matrix; Step 17 scalar/forced-generic/dispatched PFB FIR comparison для taps `4/8/12/16/20`; zero-allocation stage profiles; PFB AVX-512 та explicit FoldAware benefit; named target PFB sustained 199.17 MS/s | Result не є portable guarantee |
 | Phase 11: selected-bin PFB | виміряно, production path відкладено | Scalar/AVX2/AVX-512 direct-DFT prototype, equivalence/no-allocation tests і retained crossover benchmark для `K=64/512`, `Q=1/4/8` | Не підключати: direct DFT програє частині shapes, а full FFT займає лише ~9.1% representative PFB stage time |
 | Phase 12: unified facade | готово | `ChannelizerFactory` exposes FDC/PFB through one API; immutable plan snapshots, allocation-free diagnostics, complete example і reset/new-engine reconfiguration semantics задокументовані | Немає для facade scope |
 | Phase 13: Auto planner | готово для exact profile scope | Versioned equal-spec Q=1/8/32 profile; exact environment/request matching; FDC decision with plan key/explanation; actionable rejection outside profile | Розширювати coverage лише новими accepted profiles, без extrapolation |
-| Signal tests | готово (Conservative/FoldAware scalar/AVX2/AVX-512 scope) | 236 unit/integration tests: independent-DDC checks, Conservative/FoldAware PFB blocker sweeps, FDC alias images, worst residuals, partition invariance, SIMD equivalence, strategy/target profile enforcement, Dfine=1 blocker, Nyquist wrap, sink fault/reset і adversarial response-grid coverage | Немає для поточного correctness scope |
-| Benchmarks | готово | BenchmarkDotNet 0.15.8; retained engine/SIMD/FoldAware/selected-bin comparisons, schema-v2 working-set/stage profile та named 100 MS/s target result | Немає для documented scope |
+| Signal tests | готово (Conservative/FoldAware scalar/AVX2/AVX-512 scope) | 301 unit/integration tests: independent-DDC checks, dual-mode PFB >=80 dB adjacent-blocker/edge/half-bin/Nyquist-wrap matrix, full alias-image sweeps, FDC alias images, partition invariance, SIMD specialization/fallback equivalence, strategy/target profile enforcement, Dfine=1 blocker, sink fault/reset і adversarial response-grid coverage; compact summary schema version 3 | Немає для поточного correctness scope |
+| Benchmarks | готово | BenchmarkDotNet 0.15.8; retained engine/SIMD/FoldAware/selected-bin comparisons, common-tap specialized-vs-generic PFB FIR matrix, schema-v2 working-set/stage profile та named 100 MS/s target result | Немає для documented scope |
 | Diagnostics/docs/package | готово для managed-only scope | Allocation-free counters/stage timing, README, facade guide, ADR, acceptance manifest/report, benchmark guide, versioned backend string, FFTW provenance/licensing, packable managed-only NuGet і isolated clean-consumer verification | FFTW redistribution не входить до package scope; consumer постачає runtime окремо |
 
 Поточні важливі обмеження, які не можна помилково вважати production behavior:
@@ -2733,6 +2733,32 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 
 Повний checklist, статус кожного кроку, evidence та обов’язковий update protocol перенесені в [`implementation-steps.md`](implementation-steps.md). Після кожного інкременту цей tracker потрібно актуалізувати до завершення роботи.
 
-### 17.4. Найближчий рекомендований інкремент
+### 17.4. Крок 17: common-tap PFB kernels і 80 dB spectral acceptance
 
-Кроки 0–16 та Definition of Done перевірені для documented managed-only Windows x64, Conservative/explicit FoldAware, scalar/AVX2/AVX-512 scope. Наступного запланованого інкременту немає. Target 100 MS/s result є configuration-specific, `Auto` guarded exact profile match, а selected-bin production path лишається unwired за результатами crossover і stage profile.
+**Статус: виконано.** Public API, planner, strategy `Auto`, PFB mathematical model та `ComplexF`
+layout не змінювалися.
+
+1. Production expanded-coefficient AVX2/AVX-512 paths один раз на batch dispatch-ять
+   `TapsPerPhase=4/8/12/16` у fully unrolled kernels. Forced-generic internal entry points
+   збережені для correctness і benchmark comparisons; інші tap counts використовують generic
+   fallback, а compact AVX2 path лишається benchmark baseline.
+2. `PfbSimdTests` покриває common taps і fallback `5/20` для обох ISA, circular-shift alignment,
+   signed origins, tails, різні `K/H/Frames`, scalar equivalence та zero allocations.
+3. PFB signal acceptance використовує `Fs=1024`, `K=8`, `H=2`, `Frames=64`, request `80 dB`,
+   усі edge/half-bin positions, blockers у сусідніх coarse bins, Nyquist wrap та 60 dB
+   wanted/blocker imbalance. Conservative і FoldAware проходять однакові >=80 dB folded/end-to-end
+   gates; standalone FoldAware stopband 80 dB не вимагається.
+4. Schema-v3 signal summary фіксує requested/minimum attenuation, edge positions і blocker
+   offsets. Повний Release suite має 301/301 passing tests.
+5. Retained short BDN matrix підтверджує 0 B allocations та >=5% specialized-vs-generic gain для
+   всіх восьми pairs у повторному run: AVX2 gains `27.7/8.2/35.8/34.9%`, AVX-512 gains
+   `5.3/22.9/25.9/34.9%` для taps `4/8/12/16`. Тому всі вісім спеціалізацій активні;
+   tap count `20` документований як generic fallback.
+
+Повний evidence та exact command записані в [`implementation-steps.md`](implementation-steps.md),
+[`artifacts/benchmarks/latest-summary.md`](artifacts/benchmarks/latest-summary.md) і
+[`artifacts/signal-validation/scalar-acceptance.json`](artifacts/signal-validation/scalar-acceptance.json).
+
+### 17.5. Найближчий рекомендований інкремент
+
+Кроки 0–17 та Definition of Done перевірені для documented managed-only Windows x64, Conservative/explicit FoldAware, scalar/AVX2/AVX-512 scope. Наступного запланованого інкременту немає. Target 100 MS/s result є configuration-specific, `Auto` guarded exact profile match, а selected-bin production path лишається unwired за результатами crossover і stage profile.
