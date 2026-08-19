@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
@@ -107,7 +106,8 @@ internal static class Avx2ComplexKernels
         var floatIndex = 0;
         ref var sourceReference = ref MemoryMarshal.GetReference(sourceFloats);
         ref var destinationReference = ref MemoryMarshal.GetReference(destinationFloats);
-        for (; complexIndex <= source.Length - ComplexValuesPerVector;
+        for (;
+             complexIndex <= source.Length - ComplexValuesPerVector;
              complexIndex += ComplexValuesPerVector, floatIndex += FloatsPerVector)
         {
             var factorVector = Vector256.Create(
@@ -154,14 +154,13 @@ internal static class Avx2ComplexKernels
 
     internal static Vector256<float> MultiplyComplex(Vector256<float> left, Vector256<float> right)
     {
-        var real = Avx.Shuffle(left, left, 0b1010_0000);
-        var imaginary = Avx.Shuffle(left, left, 0b1111_0101);
-        var swappedRight = Avx.Shuffle(right, right, 0b1011_0001);
+        var real = Avx.DuplicateEvenIndexed(left);
+        var imaginary = Avx.DuplicateOddIndexed(left);
+        var swappedRight = Avx.Permute(right, 0b1011_0001);
         var imaginaryProduct = Avx.Multiply(imaginary, swappedRight);
         return Fma.MultiplyAddSubtract(real, right, imaginaryProduct);
     }
 
-    [Conditional("DEBUG")]
     private static void ValidateUnary(ReadOnlySpan<ComplexF> source, Span<ComplexF> destination)
     {
         if (source.Length != destination.Length)
@@ -175,7 +174,6 @@ internal static class Avx2ComplexKernels
         }
     }
 
-    [Conditional("DEBUG")]
     private static void ValidateBinary(
         ReadOnlySpan<ComplexF> left,
         ReadOnlySpan<ComplexF> right,
@@ -190,7 +188,6 @@ internal static class Avx2ComplexKernels
         ValidateUnary(right, destination);
     }
 
-    [Conditional("DEBUG")]
     private static void EnsureSupported()
     {
         if (!Avx2.IsSupported || !Fma.IsSupported)

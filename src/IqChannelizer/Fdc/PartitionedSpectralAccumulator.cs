@@ -57,7 +57,7 @@ internal static class PartitionedSpectralAccumulator
         {
             for (var index = 0; index < values.Length; index++)
             {
-                values[index] = values[index] * phase;
+                values[index] *= phase;
             }
         }
     }
