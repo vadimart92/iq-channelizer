@@ -222,8 +222,8 @@ public sealed class SimdTests
         var scalar = RandomComplex(new Random(91 + length), length);
         var avx = scalar.ToArray();
         const long first = (1L << 53) + 12_345;
-        var scalarRotator = new Rotator(123_456.75, 1_000_000, 7);
-        var avxRotator = new Rotator(123_456.75, 1_000_000, 7, SimdPreference.Avx2);
+        var scalarRotator = new ScalarResidualRotator(123_456.75, 1_000_000, 7);
+        var avxRotator = new Avx2ResidualRotator(123_456.75, 1_000_000, 7);
         scalarRotator.SetPhaseFromAbsoluteIndex(first);
         avxRotator.SetPhaseFromAbsoluteIndex(first);
 
@@ -246,8 +246,8 @@ public sealed class SimdTests
         const long first = -(1L << 48) + 7_777;
         var scalar = RandomComplex(new Random(0x4216), 19_973);
         var avx = scalar.ToArray();
-        var scalarRotator = new Rotator(frequencyHz, sampleRateHz, inputSamplesPerOutputSample);
-        var avxRotator = new Rotator(frequencyHz, sampleRateHz, inputSamplesPerOutputSample, SimdPreference.Avx2);
+        var scalarRotator = new ScalarResidualRotator(frequencyHz, sampleRateHz, inputSamplesPerOutputSample);
+        var avxRotator = new Avx2ResidualRotator(frequencyHz, sampleRateHz, inputSamplesPerOutputSample);
         scalarRotator.SetPhaseFromAbsoluteIndex(first);
         avxRotator.SetPhaseFromAbsoluteIndex(first);
 
@@ -272,7 +272,7 @@ public sealed class SimdTests
         }
 
         var samples = RandomComplex(new Random(0xA220), 16 * 1024 + 17);
-        var rotator = new Rotator(-77_123.5, 10_000_000, 3, SimdPreference.Avx2);
+        var rotator = new Avx2ResidualRotator(-77_123.5, 10_000_000, 3);
         rotator.SetPhaseFromAbsoluteIndex(1L << 42);
         rotator.RotateInPlace(samples);
         var before = GC.GetAllocatedBytesForCurrentThread();

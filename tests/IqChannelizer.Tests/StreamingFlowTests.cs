@@ -74,7 +74,7 @@ public sealed class StreamingFlowTests
                 2 * Math.PI * frequency * (firstAbsoluteIndex + (index * stride)) / sampleRate);
         }
 
-        var rotator = new Rotator(frequency, sampleRate, stride);
+        var rotator = Rotator.Create(frequency, sampleRate, stride);
         rotator.SetPhaseFromAbsoluteIndex(firstAbsoluteIndex);
         rotator.RotateInPlace(samples);
 
@@ -98,7 +98,7 @@ public sealed class StreamingFlowTests
             samples[index] = ComplexF.FromPolar(2 * Math.PI * (double)phaseCycles);
         }
 
-        var rotator = new Rotator(frequency, sampleRate, 1);
+        var rotator = Rotator.Create(frequency, sampleRate, 1);
         rotator.SetPhaseFromAbsoluteIndex(firstAbsoluteIndex);
         rotator.RotateInPlace(samples);
 

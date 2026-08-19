@@ -55,16 +55,16 @@ public class FdcExtractionBenchmarks
 public class ResidualRotatorBenchmarks
 {
     private ComplexF[] _samples = null!;
-    private Rotator _scalarRotator = null!;
-    private Rotator _avx2Rotator = null!;
+    private ScalarResidualRotator _scalarRotator = null!;
+    private Avx2ResidualRotator _avx2Rotator = null!;
 
     [GlobalSetup]
     public void Setup()
     {
         _samples = Enumerable.Range(0, 4096).Select(index => ComplexF.FromPolar(index * 0.013)).ToArray();
-        _scalarRotator = new Rotator(12_345.25, 1_000_000, 7);
+        _scalarRotator = new ScalarResidualRotator(12_345.25, 1_000_000, 7);
         _scalarRotator.SetPhaseFromAbsoluteIndex(1L << 48);
-        _avx2Rotator = new Rotator(12_345.25, 1_000_000, 7, SimdPreference.Avx2);
+        _avx2Rotator = new Avx2ResidualRotator(12_345.25, 1_000_000, 7);
         _avx2Rotator.SetPhaseFromAbsoluteIndex(1L << 48);
     }
 

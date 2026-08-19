@@ -35,7 +35,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
             .ToArray();
         _outputs = plan.Channels.Select(channel => new ComplexF[channel.OutputSamplesPerProcess]).ToArray();
         _residualRotators = plan.Channels
-            .Select(channel => new Rotator(
+            .Select(channel => Rotator.Create(
                 channel.ResidualFrequencyHz,
                 plan.InputSampleRateHz,
                 channel.DecimationFactor,

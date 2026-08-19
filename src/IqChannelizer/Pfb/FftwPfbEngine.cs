@@ -52,7 +52,7 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
             .Select(channel => channel.ResidualFrequencyHz == 0 ? [] : new ComplexF[frames])
             .ToArray();
         _residualRotators = plan.Channels
-            .Select(channel => new Rotator(
+            .Select(channel => Rotator.Create(
                 channel.ResidualFrequencyHz,
                 plan.InputSampleRateHz,
                 hopSize,
