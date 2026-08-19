@@ -16,19 +16,19 @@
 
 ## Остання перевірка
 
-- Дата: **2026-08-18**
-- Verified implementation base commit: `4e4c76c` + **uncommitted working tree**
-- Release tests: **148 passed, 0 failed, 0 skipped** (повний restore + test)
+- Дата: **2026-08-19**
+- Verified implementation base commit: `23b05b0` + **uncommitted working tree**
+- Release tests: **170 passed, 0 failed, 0 skipped**
 - Companion tool: **27/27 Vitest**, production Vite build successful
-- Benchmarks: **12/12 BenchmarkDotNet Dry cases executed**; Dry data is not a performance baseline
-- Найближчий implementation step: **Крок 10 — ширша alias/blocker matrix і compact acceptance summaries**
+- Benchmarks: **12/12 full statistical BenchmarkDotNet cases** plus stored allocation/latency/stage profile
+- Найближчий implementation step: **немає ungated increment; Крок 13 (SIMD) потребує явного дозволу власника**
 - Release blocker: packaging вимкнено до explicit FFTW licensing/distribution decision
 
 ## Зведена таблиця
 
 | Крок | Статус | Evidence / примітка |
 | --- | --- | --- |
-| 0. Baseline та acceptance map | виконано | [`docs/acceptance/manifest.md`](docs/acceptance/manifest.md) містить owner-role/fixture mapping і reproducible commands; 148/148 Release tests |
+| 0. Baseline та acceptance map | виконано | [`docs/acceptance/manifest.md`](docs/acceptance/manifest.md) містить owner-role/fixture mapping і reproducible commands; [`docs/acceptance/report.md`](docs/acceptance/report.md) аудіює Definition of Done; 170/170 Release tests |
 | 1. Contracts, validation, timing | виконано | Commit `ced2747`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
 | 2. FFTW runtime | виконано | Commit `3eb2c62`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
 | 3. Scalar filter-design foundation | виконано | Commit history до `5bae632`; повторно перевірено зі Step 5 working tree, 117/117 tests |
@@ -38,12 +38,12 @@
 | 7. Generalized PFB algebra `P > 1` | виконано | Commit `29c9771`; Conservative prototype, direct oracle, timing/partition tests; 127/127 tests на момент коміту |
 | 8. Scalar PFB production flow | виконано | Commit `ecbf805`; native writable input, unique-bin fan-out, stateful fine decimation/DDC; 130/130 tests |
 | 9. Generalized PFB planner | виконано | Deterministic power-of-two `K`, arbitrary integer `H`, bounded frames, exact Conservative/fine validation і planner-selected `H=33` end-to-end signal test |
-| 10. Correctness/integration suite | частково | Додано Nyquist wrap, sink-fault/reset, Dfine=1 blocker, partition-invariance і adversarial response-grid cases; повна multi-band sweep ще попереду |
-| 11. Diagnostics/observability | не почато | Не логувати в hot path |
-| 12. BenchmarkDotNet suite | частково | BenchmarkDotNet 0.15.8: scalar FIR, FFTW, warm-cache planning та FDC/PFB 1/8/32-channel families; 12-case Dry smoke green, decision-grade stored profile ще відсутній |
+| 10. Correctness/integration suite | виконано | Commit `f138d1d`; FDC/PFB alias sweeps, worst residuals, compact machine-readable summary |
+| 11. Diagnostics/observability | виконано | Commit `db4e98d`; allocation-free counters/stage timing, fault/reset status і documented semantics |
+| 12. BenchmarkDotNet suite | виконано | Commit `23b05b0`; 12 statistical cases, retained raw reports і integration stage/working-set profile |
 | 13. SIMD gate | відкладено | Потрібен явний дозвіл власника repository |
 | 14. FoldAware/selected-bin experiments | відкладено | Потрібні correctness і benchmark data |
-| 15. Facade/docs/Auto | частково | README, acceptance manifest, benchmark і release policy оновлені; `Auto` лишається intentionally unsupported до stored profiles |
+| 15. Facade/docs/Auto | частково (ungated facade/docs виконано) | Immutable plan snapshots, complete usage/reconfiguration docs і Definition-of-Done report; `Auto` та binary release лишаються за profile/license gates |
 
 ## Детальні кроки
 
@@ -275,7 +275,7 @@
 
 ### Крок 15. Завершити facade, docs і Auto останнім
 
-**Статус: частково.**
+**Статус: частково (ungated facade/docs scope виконано).** Base commit `23b05b0` + uncommitted working tree; 170/170 Release tests.
 
 - Завершити public plan inspection, diagnostics, reset/reconfiguration docs і minimal production example.
 - Перевірити Definition of Done і створити acceptance report.
@@ -284,4 +284,8 @@
 
 **Done:** Definition of Done розділу 14 головного плану виконаний, Release tests і benchmarks відтворюються, а `Auto` не використовує неперевірені heuristics.
 
-**Поточний evidence:** README описує automatic PFB planning, Dfine=1 filtering і fault/reset semantics; acceptance manifest та benchmark guide додані. SDK pinned до `10.0.303`, тестовий toolchain оновлено, а [`docs/release-policy.md`](docs/release-policy.md) і `IsPackable=false` блокують випадковий binary release до FFTW license decision. `Auto` коректно лишається unsupported.
+**Evidence:** `ChannelizerFactory.cs` повертає read-only snapshots для channels і warnings; `ContractTests.ResolvedPlanCollectionsAreImmutableSnapshots` перевіряє обидві strategies та відв’язування від mutable request list. README містить самодостатній request/plan/process/sink example. [`docs/facade.md`](docs/facade.md) фіксує plan inspection, span lifetime, serialized streaming і різницю між `Reset` та створенням нового engine. [`docs/acceptance/report.md`](docs/acceptance/report.md) аудіює кожен пункт Definition of Done і явно відділяє enforced, guarded, deferred та externally blocked gates.
+
+**Design decisions:** in-place reconfiguration не додається: зміна channels/rates/strategy/hints потребує створення та перевірки нового engine поза hot path. `Auto` і SIMD не ввімкнені, бо наявний scalar profile не є versioned comparative strategy/SIMD profile. [`docs/release-policy.md`](docs/release-policy.md) і `IsPackable=false` продовжують блокувати binary release до FFTW license decision.
+
+**Done ще не підтверджено повністю:** загальний Definition of Done містить SIMD, FoldAware comparison, target 100 MS/s realtime evidence, `Auto` profile та release-owner licensing gates. Наступного ungated implementation increment немає; Крок 13 можна починати лише після явного дозволу власника repository.

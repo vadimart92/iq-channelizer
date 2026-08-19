@@ -9,6 +9,11 @@ The Windows x64 FFTW binary is copied beside consuming applications automaticall
 Runtime support, cache/wisdom policy, exact binary provenance, and licensing obligations are documented in [docs/fftw-runtime.md](docs/fftw-runtime.md). Redistributable packaging remains disabled until the release decision in [docs/release-policy.md](docs/release-policy.md) is approved.
 
 ```csharp
+using System;
+using System.Linq;
+using IqChannelizer;
+using IqChannelizer.Abstractions;
+
 var request = new ChannelizerRequest(
     InputSampleRateHz: 1_000_000,
     Channels: [new ChannelRequest(1, 125_000, 20_000, 10_000)],
@@ -17,8 +22,28 @@ var request = new ChannelizerRequest(
     Hints: new ChannelizerImplementationHints(Simd: SimdPreference.Scalar));
 
 using var channelizer = ChannelizerFactory.Create(request);
+
+// Inspect the immutable resolved shape before sizing the caller-owned ring buffer.
 var requirements = channelizer.InputRequirements;
-channelizer.Process(historyAndChunk, firstNewSampleIndex, outputSink);
+var resolvedChannel = channelizer.Plan.Channels.Single();
+Console.WriteLine($"Output: {resolvedChannel.OutputSampleRateHz:R} Hz, " +
+                  $"{resolvedChannel.OutputSamplesPerProcess} samples/call");
+
+var historyAndChunk = new ComplexF[requirements.InputSize];
+// On every call, populate [0..HistorySize) with preceding IQ and the remainder
+// with exactly ChunkSize new samples. Zero history is valid at a new stream boundary.
+var sink = new CountingSink();
+long firstNewSampleIndex = 0;
+channelizer.Process(historyAndChunk, firstNewSampleIndex, sink);
+firstNewSampleIndex += requirements.ChunkSize;
+
+sealed class CountingSink : IChannelOutputSink
+{
+    public long SamplesReceived { get; private set; }
+
+    public void Write(int channelId, ReadOnlySpan<ComplexF> samples) =>
+        SamplesReceived = checked(SamplesReceived + samples.Length);
+}
 ```
 
 The caller owns the ring buffer and supplies exactly `[HistorySize | ChunkSize]`. Each `Process` call writes exactly one deterministic block per requested channel in request order.
@@ -33,9 +58,11 @@ The fine stage selects a per-channel power-of-two factor that divides the frame 
 
 After a stream discontinuity, call `Reset(nextFirstNewSampleIndex)` and provide fresh history (normally zero-filled at a new logical stream boundary) on the next `Process`. `Reset` establishes the exact absolute index accepted by that next call; it does not manufacture history. If the output sink throws, the engine is faulted because some blocks may already have been observed; no further processing is accepted until `Reset`. Calling either `Process` or `Reset` after disposal throws `ObjectDisposedException`.
 
+`Reset` preserves the resolved DSP shape. To change channels, rates, strategy, or implementation hints, create and inspect a new engine, then swap it at an application-defined stream boundary. The complete facade, buffer-lifetime, and reconfiguration contract is in [docs/facade.md](docs/facade.md).
+
 Allocation-free block counters are available through `channelizer.Diagnostics`. They are disabled by default; `Counters` enables counts and `StageTiming` additionally records stage timings, maximum latency and the latest realtime margin. Reset/failure semantics and field units are documented in [docs/diagnostics.md](docs/diagnostics.md).
 
-The tracked acceptance map and verification commands are in [docs/acceptance/manifest.md](docs/acceptance/manifest.md). To list or run benchmarks:
+The tracked acceptance map and verification commands are in [docs/acceptance/manifest.md](docs/acceptance/manifest.md); the current Definition-of-Done audit is in [docs/acceptance/report.md](docs/acceptance/report.md). To list or run benchmarks:
 
 ```powershell
 dotnet run --project benchmarks/IqChannelizer.Benchmarks -c Release -- --list flat

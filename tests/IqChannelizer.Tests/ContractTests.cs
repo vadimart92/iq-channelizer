@@ -168,6 +168,37 @@ public sealed class ContractTests
 
     [TestCase(ChannelizerStrategy.Fdc)]
     [TestCase(ChannelizerStrategy.Pfb)]
+    public void ResolvedPlanCollectionsAreImmutableSnapshots(ChannelizerStrategy strategy)
+    {
+        var requestedChannels = new List<ChannelRequest> { Channel(17, 128) };
+        var request = Request(strategy, requestedChannels) with
+        {
+            InputBlocks = new InputBlockConstraints(16, 16),
+            Hints = strategy == ChannelizerStrategy.Fdc
+                ? new ChannelizerImplementationHints(FdcDecimationFactor: 2, Simd: SimdPreference.Scalar)
+                : new ChannelizerImplementationHints(
+                    PfbFftSize: 8,
+                    PfbHopSize: 4,
+                    PfbFramesPerBatch: 4,
+                    Simd: SimdPreference.Scalar)
+        };
+
+        using var engine = ChannelizerFactory.Create(request);
+        requestedChannels[0] = Channel(99, -128);
+
+        var resolvedChannels = (IList<ResolvedChannelPlan>)engine.Plan.Channels;
+        var warnings = (IList<string>)engine.Plan.Warnings;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(engine.Plan.Channels.Single().ChannelId, Is.EqualTo(17));
+            Assert.That(() => resolvedChannels[0] = resolvedChannels[0], Throws.TypeOf<NotSupportedException>());
+            Assert.That(() => warnings.Add("mutation"), Throws.TypeOf<NotSupportedException>());
+        });
+    }
+
+    [TestCase(ChannelizerStrategy.Fdc)]
+    [TestCase(ChannelizerStrategy.Pfb)]
     public void NegativeNyquistUsesTheCanonicalSignedBin(ChannelizerStrategy strategy)
     {
         var request = Request(strategy, [Channel(1, -512)]) with

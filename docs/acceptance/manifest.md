@@ -19,6 +19,7 @@ remains under ignored `TestResults/` and `BenchmarkDotNet.Artifacts/` directorie
 | Filter pass/fail checks cannot miss a narrow between-grid peak | DSP owner | adversarial tests in `FilterDesignTests` | Enforced |
 | FFTW runtime identity, exports, alignment, cache and steady-state allocation contract | Runtime owner | `FftwTests` plus pinned hashes in `docs/fftw-runtime.md` | Enforced |
 | Diagnostics counters, stage timing, fault/reset status and enabled/disabled allocation contract | Runtime owner | `DiagnosticsTests` | Enforced |
+| Unified facade plan snapshots, lifecycle and reconfiguration boundary | Core API owner | `ContractTests.ResolvedPlanCollectionsAreImmutableSnapshots`, `docs/facade.md` | Enforced |
 | Scalar primitive, FFTW, planning, FDC and PFB statistical baseline exists | Performance owner | `artifacts/benchmarks/latest-summary.md`, retained BDN CSV/Markdown, and `stage-profile.json` | Enforced for recorded scalar configuration; no general realtime claim |
 | SigMF generator model/DSP/export behavior | Tooling owner | `pnpm test` and `pnpm run build` in `tools/sigmf-generator` | Enforced |
 | Redistributable package is license-approved | Release owner | `docs/release-policy.md`; library has `IsPackable=false` | Blocked by policy decision |
@@ -40,4 +41,5 @@ pnpm --dir tools/sigmf-generator run build
 
 The exact passing test count and verified working-tree revision are recorded in
 [`implementation-steps.md`](../../implementation-steps.md) after each implementation
-increment.
+increment. The current section-14 Definition-of-Done audit, including deferred and blocked
+gates, is in [`report.md`](report.md).

@@ -64,10 +64,10 @@ public static class ChannelizerFactory
             FftwThreadCount = 1,
             AlignedBufferBytes = nativeBytes,
             EstimatedWorkingSetBytes = workingSetBytes,
-            Warnings = channels.Select(channel => channel.Warning)
+            Warnings = Array.AsReadOnly(channels.Select(channel => channel.Warning)
                 .Where(warning => warning is not null)
                 .Select(warning => warning!)
-                .ToArray(),
+                .ToArray()),
             FftSize = transformLength,
             FilterDesignMode = "KaiserConservativeOverlapSave"
         };
@@ -176,11 +176,11 @@ public static class ChannelizerFactory
             FftwThreadCount = 1,
             AlignedBufferBytes = nativeBytes,
             EstimatedWorkingSetBytes = workingSetBytes,
-            Warnings = layout.Warnings
+            Warnings = Array.AsReadOnly(layout.Warnings
                 .Concat(channels.Select(channel => channel.Warning)
                     .Where(warning => warning is not null)
                     .Select(warning => warning!))
-                .ToArray(),
+                .ToArray()),
             FftSize = fftSize,
             HopSize = hopSize,
             FramesPerBatch = frames,
