@@ -132,7 +132,9 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
                 Diagnostics.RecordFftwExecution(System.Diagnostics.Stopwatch.GetTimestamp() - fftStartedAt);
             }
         }
-
+        
+        var firstAnchor = firstNewSampleIndex + _hopSize - 1;
+        EnsureResidualRotatorsAnchored(firstAnchor);
         var channelStartedAt = Diagnostics.BeginTiming();
         for (var frame = 0; frame < _frames; frame++)
         {
@@ -152,8 +154,6 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
             {
                 var rotated = _rotatedStreams[channelIndex].AsSpan();
                 fineInput.CopyTo(rotated);
-                var firstAnchor = firstNewSampleIndex + _hopSize - 1;
-                EnsureResidualRotatorsAnchored(firstAnchor);
                 _residualRotators[channelIndex].RotateInPlace(rotated);
                 fineInput = rotated;
             }
