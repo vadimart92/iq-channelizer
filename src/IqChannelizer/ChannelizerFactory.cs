@@ -71,7 +71,7 @@ public static class ChannelizerFactory
             FftSize = transformLength,
             FilterDesignMode = "KaiserConservativeOverlapSave"
         };
-        return new FftwFdcEngine(plan, designs);
+        return new FftwFdcEngine(plan, designs, request.Hints?.Diagnostics ?? DiagnosticsMode.Disabled);
     }
 
     private static IReadOnlyList<ResolvedChannelPlan> ResolveFdcChannels(
@@ -189,7 +189,14 @@ public static class ChannelizerFactory
             TapsPerPhase = prototype.TapsPerPhase(fftSize),
             FilterDesignMode = "KaiserConservative"
         };
-        return new FftwPfbEngine(plan, fftSize, hopSize, frames, prototype.Taps, fineStages);
+        return new FftwPfbEngine(
+            plan,
+            fftSize,
+            hopSize,
+            frames,
+            prototype.Taps,
+            fineStages,
+            request.Hints?.Diagnostics ?? DiagnosticsMode.Disabled);
     }
 
     private static ResolvedChannelPlan ResolveChannel(

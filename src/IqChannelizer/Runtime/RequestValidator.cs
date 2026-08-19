@@ -89,6 +89,11 @@ internal static class RequestValidator
             throw new ArgumentOutOfRangeException(nameof(request), "Unknown SIMD preference.");
         }
 
+        if (!Enum.IsDefined(hints.Diagnostics))
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), "Unknown diagnostics mode.");
+        }
+
         if (hints.FdcDecimationFactor is { } decimation &&
             (decimation <= 0 || (decimation & (decimation - 1)) != 0))
         {

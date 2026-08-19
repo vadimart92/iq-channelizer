@@ -13,8 +13,11 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
     private readonly ComplexF[][] _outputs;
     private readonly FdcChannelDesign[] _channelDesigns;
 
-    public FftwFdcEngine(ResolvedChannelizerPlan plan, FdcChannelDesign[] channelDesigns)
-        : base(plan)
+    public FftwFdcEngine(
+        ResolvedChannelizerPlan plan,
+        FdcChannelDesign[] channelDesigns,
+        DiagnosticsMode diagnosticsMode)
+        : base(plan, diagnosticsMode)
     {
         _channelDesigns = channelDesigns;
         var transformLength = InputRequirements.InputSize;
@@ -35,13 +38,36 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
 
     protected override void ProcessCore(ReadOnlySpan<ComplexF> input, long firstNewSampleIndex, IChannelOutputSink output)
     {
-        _forwardPlan.Execute(input, _spectrum);
+        var copyStartedAt = Diagnostics.BeginTiming();
+        input.CopyTo(_forwardPlan.WritableInput);
+        Diagnostics.RecordFdcInputCopy(
+            checked(input.Length * 8),
+            Diagnostics.IsTimingEnabled ? System.Diagnostics.Stopwatch.GetTimestamp() - copyStartedAt : 0);
+        var fftStartedAt = Diagnostics.BeginTiming();
+        try
+        {
+            _forwardPlan.ExecuteFromInput(_spectrum);
+        }
+        catch
+        {
+            Diagnostics.RecordFftwFailure();
+            throw;
+        }
+        finally
+        {
+            if (Diagnostics.IsTimingEnabled)
+            {
+                Diagnostics.RecordFftwExecution(System.Diagnostics.Stopwatch.GetTimestamp() - fftStartedAt);
+            }
+        }
+
         ForwardTransformExecutionCount++;
         var n = input.Length;
         var frameStartInputIndex = checked(firstNewSampleIndex - InputRequirements.HistorySize);
 
         foreach (var group in _inverseGroups)
         {
+            var extractionStartedAt = Diagnostics.BeginTiming();
             for (var groupChannelIndex = 0; groupChannelIndex < group.ChannelIndices.Length; groupChannelIndex++)
             {
                 var channelIndex = group.ChannelIndices[groupChannelIndex];
@@ -59,7 +85,30 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
                     inverseInput);
             }
 
-            group.BackwardPlan.Execute(group.Input, group.Output);
+            if (Diagnostics.IsTimingEnabled)
+            {
+                Diagnostics.RecordChannelProcessing(System.Diagnostics.Stopwatch.GetTimestamp() - extractionStartedAt);
+            }
+
+            fftStartedAt = Diagnostics.BeginTiming();
+            try
+            {
+                group.BackwardPlan.Execute(group.Input, group.Output);
+            }
+            catch
+            {
+                Diagnostics.RecordFftwFailure();
+                throw;
+            }
+            finally
+            {
+                if (Diagnostics.IsTimingEnabled)
+                {
+                    Diagnostics.RecordFftwExecution(System.Diagnostics.Stopwatch.GetTimestamp() - fftStartedAt);
+                }
+            }
+
+            var channelStartedAt = Diagnostics.BeginTiming();
             for (var groupChannelIndex = 0; groupChannelIndex < group.ChannelIndices.Length; groupChannelIndex++)
             {
                 var channelIndex = group.ChannelIndices[groupChannelIndex];
@@ -78,12 +127,17 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
                     firstNewSampleIndex,
                     group.Decimation);
             }
+
+            if (Diagnostics.IsTimingEnabled)
+            {
+                Diagnostics.RecordChannelProcessing(System.Diagnostics.Stopwatch.GetTimestamp() - channelStartedAt);
+            }
         }
 
         // Preserve the public request order even though inverse transforms execute by D group.
         for (var channelIndex = 0; channelIndex < Plan.Channels.Count; channelIndex++)
         {
-            output.Write(Plan.Channels[channelIndex].ChannelId, _outputs[channelIndex]);
+            WriteOutput(output, channelIndex, _outputs[channelIndex]);
         }
     }
 

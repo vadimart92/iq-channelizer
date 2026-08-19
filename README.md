@@ -33,6 +33,8 @@ The fine stage selects a per-channel power-of-two factor that divides the frame 
 
 After a stream discontinuity, call `Reset(nextFirstNewSampleIndex)` and provide fresh history (normally zero-filled at a new logical stream boundary) on the next `Process`. `Reset` establishes the exact absolute index accepted by that next call; it does not manufacture history. If the output sink throws, the engine is faulted because some blocks may already have been observed; no further processing is accepted until `Reset`. Calling either `Process` or `Reset` after disposal throws `ObjectDisposedException`.
 
+Allocation-free block counters are available through `channelizer.Diagnostics`. They are disabled by default; `Counters` enables counts and `StageTiming` additionally records stage timings, maximum latency and the latest realtime margin. Reset/failure semantics and field units are documented in [docs/diagnostics.md](docs/diagnostics.md).
+
 The tracked acceptance map and verification commands are in [docs/acceptance/manifest.md](docs/acceptance/manifest.md). To list or run benchmarks:
 
 ```powershell

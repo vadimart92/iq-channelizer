@@ -26,8 +26,9 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         int hopSize,
         int frames,
         float[] prototype,
-        PfbFineStageDesign[] fineStageDesigns)
-        : base(plan)
+        PfbFineStageDesign[] fineStageDesigns,
+        DiagnosticsMode diagnosticsMode)
+        : base(plan, diagnosticsMode)
     {
         _fftSize = fftSize;
         _hopSize = hopSize;
@@ -49,6 +50,7 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
     protected override void ProcessCore(ReadOnlySpan<ComplexF> input, long firstNewSampleIndex, IChannelOutputSink output)
     {
         var spanAbsoluteStart = firstNewSampleIndex - InputRequirements.HistorySize;
+        var polyphaseStartedAt = Diagnostics.BeginTiming();
         for (var frame = 0; frame < _frames; frame++)
         {
             var anchor = checked(firstNewSampleIndex + ((long)(frame + 1) * _hopSize) - 1);
@@ -68,7 +70,29 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
             }
         }
 
-        _backwardPlan.ExecuteFromInput(_fftOutput);
+        Diagnostics.RecordPfbPolyphase(
+            InputRequirements.ChunkSize,
+            Diagnostics.IsTimingEnabled ? System.Diagnostics.Stopwatch.GetTimestamp() - polyphaseStartedAt : 0);
+
+        var fftStartedAt = Diagnostics.BeginTiming();
+        try
+        {
+            _backwardPlan.ExecuteFromInput(_fftOutput);
+        }
+        catch
+        {
+            Diagnostics.RecordFftwFailure();
+            throw;
+        }
+        finally
+        {
+            if (Diagnostics.IsTimingEnabled)
+            {
+                Diagnostics.RecordFftwExecution(System.Diagnostics.Stopwatch.GetTimestamp() - fftStartedAt);
+            }
+        }
+
+        var channelStartedAt = Diagnostics.BeginTiming();
         for (var frame = 0; frame < _frames; frame++)
         {
             var bins = _fftOutput.AsSpan(frame * _fftSize, _fftSize);
@@ -95,12 +119,17 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
             _fineDecimators[channelIndex].Process(rotated, destination);
         }
 
+        if (Diagnostics.IsTimingEnabled)
+        {
+            Diagnostics.RecordChannelProcessing(System.Diagnostics.Stopwatch.GetTimestamp() - channelStartedAt);
+        }
+
         // Advance every channel's state before exposing any output. If a sink
         // throws, StreamingEngineBase faults the engine until Reset so partially
         // emitted blocks can never be followed by silently divergent DSP state.
         for (var channelIndex = 0; channelIndex < Plan.Channels.Count; channelIndex++)
         {
-            output.Write(Plan.Channels[channelIndex].ChannelId, _outputs[channelIndex]);
+            WriteOutput(output, channelIndex, _outputs[channelIndex]);
         }
     }
 

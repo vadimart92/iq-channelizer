@@ -222,13 +222,19 @@
 
 ### Крок 11. Додати diagnostics та observability
 
-**Статус: не почато.**
+**Статус: виконано.** Base commit `f138d1d` + uncommitted working tree; 168/168 Release tests.
 
 - Реалізувати allocation-free counters і stage timing з розділу 12 головного плану.
 - Не логувати на sample/frame hot path; debug tracing має бути sampled або explicit opt-in.
 - Додати tests на monotonic counters та відсутність allocations із diagnostics enabled/disabled.
 
 **Done:** plan/runtime status пояснюють consumed counts, output counts, latency і failures без зміни sink contract.
+
+**Evidence:** `ChannelizerDiagnostics.cs`, diagnostics integration у `StreamingEngineBase`, `FftwFdcEngine` і `FftwPfbEngine`, `DiagnosticsTests.cs`, `docs/diagnostics.md` та acceptance-manifest mapping.
+
+**Design decisions:** diagnostics є explicit creation-time opt-in із режимами `Disabled`, `Counters` і `StageTiming`. Один preallocated diagnostics object зберігає lifetime counters, per-channel output totals, rejection/failure/reset state та engine-specific input-stage metrics; `Snapshot` є value type. Stage timing використовує monotonic `Stopwatch` ticks лише на block/stage boundaries, без logging і без per-sample clock reads. `CurrentRealtimeMargin` описує останній успішний block, а не заяву про realtime capacity. `Reset` очищає current fault status, але зберігає historical counters і збільшує `ReconfigurationCount`.
+
+**Done підтверджено:** counters монотонні й мають exact consumed/output значення; sink failure видимий до Reset; FDC copy та PFB polyphase metrics мають різні задокументовані semantics; усі enabled/disabled режими проходять steady-state zero-allocation tests для обох engines.
 
 ### Крок 12. Побудувати реальний BenchmarkDotNet suite
 

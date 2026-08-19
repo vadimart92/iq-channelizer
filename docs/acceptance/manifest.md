@@ -18,6 +18,7 @@ remains under ignored `TestResults/` and `BenchmarkDotNet.Artifacts/` directorie
 | Per-channel PFB filtering remains active for `Dfine=1` | DSP owner | `PfbProductionFlowTests.FineFactorOneStillAppliesTheRequestedPerChannelFilter` | Enforced |
 | Filter pass/fail checks cannot miss a narrow between-grid peak | DSP owner | adversarial tests in `FilterDesignTests` | Enforced |
 | FFTW runtime identity, exports, alignment, cache and steady-state allocation contract | Runtime owner | `FftwTests` plus pinned hashes in `docs/fftw-runtime.md` | Enforced |
+| Diagnostics counters, stage timing, fault/reset status and enabled/disabled allocation contract | Runtime owner | `DiagnosticsTests` | Enforced |
 | Scalar primitive, FFTW, planning, FDC and PFB benchmark entry points exist | Performance owner | `dotnet run --project benchmarks/IqChannelizer.Benchmarks -c Release -- --list flat` | Enforced; no performance claim |
 | SigMF generator model/DSP/export behavior | Tooling owner | `pnpm test` and `pnpm run build` in `tools/sigmf-generator` | Enforced |
 | Redistributable package is license-approved | Release owner | `docs/release-policy.md`; library has `IsPackable=false` | Blocked by policy decision |

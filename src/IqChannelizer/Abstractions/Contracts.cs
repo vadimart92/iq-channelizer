@@ -15,6 +15,13 @@ public enum SimdPreference
     Avx512
 }
 
+public enum DiagnosticsMode
+{
+    Disabled,
+    Counters,
+    StageTiming
+}
+
 public sealed record ChannelizerRequest(
     double InputSampleRateHz,
     IReadOnlyList<ChannelRequest> Channels,
@@ -31,7 +38,8 @@ public sealed record ChannelizerImplementationHints(
     int? PfbFftSize = null,
     int? PfbHopSize = null,
     int? PfbFramesPerBatch = null,
-    SimdPreference Simd = SimdPreference.Auto);
+    SimdPreference Simd = SimdPreference.Auto,
+    DiagnosticsMode Diagnostics = DiagnosticsMode.Disabled);
 
 public sealed record ChannelRequest(
     int ChannelId,
@@ -117,6 +125,7 @@ public interface IStreamingChannelizer : IDisposable
 {
     ResolvedChannelizerPlan Plan { get; }
     InputRequirements InputRequirements { get; }
+    ChannelizerDiagnostics Diagnostics { get; }
 
     void Process(
         ReadOnlySpan<ComplexF> historyAndChunk,
