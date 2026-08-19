@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedOn": "2026-08-19",
+  "suite": "SignalValidationAcceptanceTests",
+  "command": "dotnet test IqChannelizer.sln -c Release --no-restore",
+  "reproducibility": {
+    "seed": 20260819,
+    "inputSampleRateHz": 1024,
+    "backend": "scalar+FFTW"
+  },
+  "acceptance": {
+    "maximumBlockerRms": 0.0032,
+    "maximumFdcReferenceComplexError": 0.0002,
+    "halfBinAmplitudeTolerance": 0.0006
+  },
+  "engines": {
+    "fdc": {
+      "decimationFactor": 8,
+      "aliasImagesSwept": 7,
+      "independentDdcCompared": true
+    },
+    "pfb": {
+      "fftSize": 8,
+      "hopSize": 2,
+      "fineDecimationFactor": 8,
+      "totalDecimationFactor": 16,
+      "aliasImagesSwept": 15,
+      "halfBinResidualsHz": [
+        -64,
+        64
+      ]
+    }
+  },
+  "filters": {
+    "decimationFactors": [
+      2,
+      4,
+      8
+    ],
+    "standaloneResponseChecked": true,
+    "conservativeFoldedResponseChecked": true
+  }
+}

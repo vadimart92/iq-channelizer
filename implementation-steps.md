@@ -205,7 +205,7 @@
 
 ### Крок 10. Розширити correctness та integration suite
 
-**Статус: частково.** Base commit `4e4c76c` + uncommitted working tree.
+**Статус: виконано.** Base commit `8050d9c` + uncommitted working tree; 156/156 Release tests.
 
 - Додати всі релевантні сценарії розділу 10.2 головного плану для FDC і PFB.
 - Перевірити exact counts/rates/timing, long-run phase, discontinuity/reset, first/last channel, bin wrap і worst residual `±DeltaF/2`.
@@ -214,7 +214,11 @@
 
 **Done:** обидва engines проходять independent DDC і alias acceptance suite; failures містять reproducible seed/configuration.
 
-**Поточний evidence:** canonical/wrapped Nyquist mapping, sink failure fault/reset для обох engines, PFB `Dfine=1` blocker rejection, `FramesPerBatch` invariance та narrow between-grid response peak уже автоматизовані. Повна sweep-матриця всіх alias bands і compact machine-readable signal summary ще не виконані.
+**Evidence:** `SignalValidationAcceptanceTests.cs`, `artifacts/signal-validation/scalar-acceptance.json`, розширений `docs/acceptance/manifest.md`, а також попередні `ContractTests`, `StreamingFlowTests`, `FdcOverlapSaveTests`, `PfbAlgebraTests`, `PfbProductionFlowTests` і `FilterDesignTests`.
+
+**Design decisions:** representative FDC `D=8` sweep виконує всі `D-1` folded images і для кожного blocker звіряє complex output з незалежним double-precision DDC. Representative generalized PFB `K=8,H=2,Dfine=8` sweep виконує всі `H*Dfine-1` images фінального rate після FIR warmup. Окремі fixtures перевіряють обидва worst residual `±DeltaF/2`, а standalone/conservative-folded filter matrix покриває `D=2/4/8`. Кожна signal failure містить deterministic seed і повну shape/frequency configuration; tracked JSON зберігає лише компактну матрицю та acceptance limits без raw IQ.
+
+**Done підтверджено:** обидва engines проходять alias acceptance, FDC sweep збігається з independent DDC, exact output counts перевіряються на кожному process, а tracked summary валідовується executable test-ом.
 
 ### Крок 11. Додати diagnostics та observability
 

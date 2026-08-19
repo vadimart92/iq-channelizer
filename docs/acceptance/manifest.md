@@ -10,6 +10,8 @@ remains under ignored `TestResults/` and `BenchmarkDotNet.Artifacts/` directorie
 | Canonical signed-bin mapping, including exact `-Fs/2` | DSP owner | `ContractTests.NegativeNyquistUsesTheCanonicalSignedBin` | Enforced |
 | Failed output sink cannot leave a silently reusable partial state | Streaming owner | `StreamingFlowTests.FailedSinkFaultsEngineUntilReset` for FDC and PFB | Enforced |
 | FDC overlap-save output matches independent double-precision DDC | DSP owner | `FdcOverlapSaveTests`, `FdcPlannerTests` | Enforced |
+| Every folded alias image is exercised for representative FDC and PFB plans | DSP owner | `SignalValidationAcceptanceTests`; compact result in `artifacts/signal-validation/scalar-acceptance.json` | Enforced |
+| Worst-case PFB residual at both `-DeltaF/2` and `+DeltaF/2` preserves amplitude | DSP owner | `SignalValidationAcceptanceTests.PfbAcceptsBothWorstCaseHalfBinResiduals` | Enforced |
 | Generalized PFB algebra and absolute frame correction | DSP owner | `PfbAlgebraTests`, `PfbMathTests` | Enforced |
 | Automatic PFB planning can select `H != K` and `H != K/2` | Planner owner | `PfbPlannerTests.AutomaticPlannerSelectsFeasibleArbitraryHopAndExactChunkShape` | Enforced |
 | `FramesPerBatch` does not change the logical PFB stream | Streaming owner | `PfbProductionFlowTests.FramesPerBatchDoesNotChangeLogicalOutput` | Enforced |
