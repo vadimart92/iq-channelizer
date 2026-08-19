@@ -20,3 +20,16 @@ Dry measurements have one sample and are not performance evidence. A decision-gr
 must retain the generated Markdown/CSV output together with the commit, CPU, OS, runtime,
 FFTW version, power policy, and exact command. Only such a stored comparative profile may
 feed a future `Auto`, SIMD, FoldAware, selected-bin, or realtime decision.
+
+For an allocation and latency integration profile with diagnostics-based stage totals:
+
+```powershell
+dotnet run --project benchmarks/IqChannelizer.Benchmarks -c Release --no-build -- `
+  --stage-profile --commit <git-sha> `
+  --output artifacts/benchmarks/stage-profile.json
+```
+
+The stage profile uses preallocated latency storage and measures 2,000 calls by default.
+It reports p50/p95/p99/max latency, managed allocation delta, resolved working-set estimate,
+process working-set snapshots, throughput and engine-specific stage ticks. These figures are
+machine-specific evidence, not portable performance guarantees.

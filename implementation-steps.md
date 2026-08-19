@@ -238,7 +238,7 @@
 
 ### Крок 12. Побудувати реальний BenchmarkDotNet suite
 
-**Статус: частково.** Base commit `4e4c76c` + uncommitted working tree.
+**Статус: виконано.** Implementation increment based on `db4e98d`; 168/168 Release tests and 12/12 full statistical benchmark cases.
 
 - Підключити BenchmarkDotNet у наявний третій project, не створювати новий project.
 - Додати FFTW, scalar primitives, FDC, PFB і end-to-end families з розділу 11 головного плану.
@@ -247,9 +247,11 @@
 
 **Done:** є reproducible baseline ns/input sample, allocations, working set і stage breakdown; немає realtime claims без end-to-end result.
 
-**Evidence:** BenchmarkDotNet 0.15.8 підключено до наявного project; `PrimitiveBenchmarks`, `FftwBenchmarks`, `EngineBenchmarks` і `PlanningBenchmarks` дають 12 cases. Dry smoke виконав усі cases, steady-state families не показали managed allocations. [`docs/benchmarks.md`](docs/benchmarks.md) забороняє трактувати Dry numbers як baseline.
+**Evidence:** BenchmarkDotNet 0.15.8 у наявному третьому project; `PrimitiveBenchmarks`, `FftwBenchmarks`, `EngineBenchmarks` і `PlanningBenchmarks`; retained CSV/Markdown та environment/command summary у `artifacts/benchmarks/`; `StageProfileRunner.cs` і machine-readable `stage-profile.json`; оновлені `docs/benchmarks.md` та acceptance manifest.
 
-**Залишилось:** виконати повний statistical job на погодженому target CPU, зберегти profile summary/raw paths і додати stage breakdown/working-set evidence.
+**Design decisions:** decision-grade BDN run використовує default statistical job замість Dry і зберігає confidence/error data для всіх 12 cases. Steady-state engine results нормалізовані через `OperationsPerInvoke=4096` до ns/input sample; initialization лишається окремою allocation-bearing family. Integration runner виконує 2,000 blocks після same-engine stabilization, preallocate-ить latency storage, звітує p50/p95/p99/max, exact managed allocation delta, resolved working-set estimate, process working-set snapshots і diagnostics-based stage ticks. StageTiming overhead явно відокремлено від BDN baseline.
+
+**Done підтверджено:** на AMD Ryzen 5 8500G / .NET 10.0.11 виконано 12/12 statistical cases; steady-state BDN та integration loops мають zero managed allocations; raw reports, commit/environment, exact commands, working-set і stage-breakdown evidence збережені. Результати не використовуються як portable realtime claim і не вмикають `Auto` чи experimental paths.
 
 ### Крок 13. SIMD gate — лише після явного дозволу
 

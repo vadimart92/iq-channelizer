@@ -6,6 +6,14 @@ artifacts/*
 !artifacts/signal-validation/
 artifacts/signal-validation/*
 !artifacts/signal-validation/scalar-acceptance.json
+!artifacts/benchmarks/
+artifacts/benchmarks/*
+!artifacts/benchmarks/latest-summary.md
+!artifacts/benchmarks/stage-profile.json
+!artifacts/benchmarks/results/
+artifacts/benchmarks/results/*
+!artifacts/benchmarks/results/*.csv
+!artifacts/benchmarks/results/*.md
 .dotnet-cli/
 *.user
 *.suo

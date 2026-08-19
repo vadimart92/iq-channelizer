@@ -1,0 +1,83 @@
+{
+  "SchemaVersion": 1,
+  "Commit": "db4e98d\u002Bstep12-working-tree",
+  "GeneratedAtUtc": "2026-08-19T09:09:37.302555+00:00",
+  "Environment": {
+    "Runtime": ".NET 10.0.11",
+    "OperatingSystem": "Microsoft Windows 10.0.26200",
+    "ProcessArchitecture": "X64",
+    "LogicalProcessorCount": 12,
+    "ProcessorIdentifier": "AMD64 Family 25 Model 120 Stepping 0, AuthenticAMD",
+    "StopwatchFrequency": 10000000
+  },
+  "Configuration": {
+    "InputSampleRateHz": 1000000,
+    "ChannelCount": 8,
+    "ChunkSize": 4096,
+    "Iterations": 2000
+  },
+  "Results": [
+    {
+      "Strategy": "Fdc",
+      "DspBackend": "FFTW fftw-3.3.5-sse2-avx single-precision C2C",
+      "FftSize": 5280,
+      "HopSize": null,
+      "FramesPerBatch": null,
+      "HistorySize": 1184,
+      "ChunkSize": 4096,
+      "EstimatedWorkingSetBytes": 187712,
+      "ProcessWorkingSetBytesBefore": 29446144,
+      "ProcessWorkingSetBytesAfter": 31883264,
+      "ManagedAllocatedBytes": 0,
+      "NanosecondsPerInputSample": 16.420166015625,
+      "SustainedInputMegaSamplesPerSecond": 60.900724088199,
+      "RealtimeMarginAtMetadataRate": 62.91858678955453,
+      "LatencyMilliseconds": {
+        "P50": 0.0633,
+        "P95": 0.0731,
+        "P99": 0.088,
+        "Maximum": 5.4211
+      },
+      "StageTicks": {
+        "Input": 13545,
+        "Fftw": 274880,
+        "Channel": 1038665,
+        "Output": 7283,
+        "Total": 1345140
+      },
+      "OutputSamples": 2048000,
+      "Checksum": 56028
+    },
+    {
+      "Strategy": "Pfb",
+      "DspBackend": "FFTW fftw-3.3.5-sse2-avx single-precision batched C2C with scalar PFB FIR",
+      "FftSize": 64,
+      "HopSize": 32,
+      "FramesPerBatch": 128,
+      "HistorySize": 1215,
+      "ChunkSize": 4096,
+      "EstimatedWorkingSetBytes": 294784,
+      "ProcessWorkingSetBytesBefore": 33046528,
+      "ProcessWorkingSetBytesAfter": 33669120,
+      "ManagedAllocatedBytes": 0,
+      "NanosecondsPerInputSample": 50.8174072265625,
+      "SustainedInputMegaSamplesPerSecond": 19.678296366865705,
+      "RealtimeMarginAtMetadataRate": 28.42470506592644,
+      "LatencyMilliseconds": {
+        "P50": 0.1442,
+        "P95": 0.5653,
+        "P99": 0.5851,
+        "Maximum": 4.0428
+      },
+      "StageTicks": {
+        "Input": 3390936,
+        "Fftw": 102962,
+        "Channel": 658984,
+        "Output": 3656,
+        "Total": 4162962
+      },
+      "OutputSamples": 2048000,
+      "Checksum": 56028
+    }
+  ]
+}
