@@ -1,11 +1,11 @@
 # Definition-of-Done acceptance report
 
 This report audits section 14 of [`implementation-plan.md`](../../implementation-plan.md)
-against the Conservative scalar/AVX2 milestone at commit `1d4fc31` plus the current Step 13
-working tree. It records capability status; it is not a redistributable-release approval
+against the Conservative scalar/AVX2/AVX-512 milestone at commit `998d427` plus the current AVX-512
+changeset. It records capability status; it is not a redistributable-release approval
 or a portable realtime claim.
 
-Verification date: **2026-08-19**. Release suite: **202 passed, 0 failed, 0 skipped**.
+Verification date: **2026-08-19**. Release suite: **221 passed, 0 failed, 0 skipped**.
 
 Status meanings:
 
@@ -27,9 +27,9 @@ Status meanings:
 | Pre-FFT circular shift equals explicit post-FFT correction | Enforced | `PfbAlgebraTests` |
 | SIMD PFB FIR stores directly into rotated FFTW input | Enforced | `PfbPhaseFir`, `PfbSimdTests`; at most two segments, no gather or intermediate K-vector |
 | AVX2/FMA hot-kernel backend exists | Enforced | PFB FIR and FDC extraction kernels, scalar-vs-AVX2 engine fixtures and retained BDN reports |
-| AVX-512 exists where worthwhile or has benchmark evidence against it | Deferred | AVX2 is accepted; AVX-512 remains a separate measured prototype/data gate and is not selected |
+| AVX-512 exists where worthwhile or has benchmark evidence against it | Enforced | AVX-512F PFB/FDC kernels, forced-backend equivalence, zero-allocation tests and retained AVX2 comparison reports |
 | Scalar fallback exists | Enforced | Both production engines and scalar-vs-reference tests |
-| ISA dispatch is outside inner loops | Enforced | `SimdBackendResolver` resolves once at creation; forced unsupported AVX2 is actionable and AVX-512 remains rejected |
+| ISA dispatch is outside inner loops | Enforced | `SimdBackendResolver` resolves once at creation; forced unsupported AVX2/AVX-512 requests produce actionable errors |
 | FDC inverse normalization is explicit and amplitude-tested | Enforced | `FftwFdcEngine`, `FdcOverlapSaveTests` |
 | Filter validation includes folded alias response | Enforced | filter tests and `SignalValidationAcceptanceTests` |
 | Conservative and FoldAware designs can be compared safely | Deferred | FoldAware remains disabled pending accepted blocker/correctness data |
@@ -44,7 +44,7 @@ Status meanings:
 | Steady-state processing has no managed allocations | Enforced | FDC/PFB/diagnostics tests and retained BDN results |
 | FFTW planning never occurs in `Process` | Enforced | FFTW plan-cache/runtime design and execution tests |
 | Both engines match the independent DDC | Enforced | FDC/PFB signal acceptance fixtures |
-| Benchmarks cover primitives, FFTW, FDC, PFB, and SIMD backends | Enforced | full 12-case scalar/AVX2 engine BDN plus retained PFB FIR, FDC extraction and rotator comparisons |
+| Benchmarks cover primitives, FFTW, FDC, PFB, and SIMD backends | Enforced | retained 18-case scalar/AVX2/AVX-512 engine BDN plus PFB FIR, FDC extraction and rotator comparisons |
 | Target 100 MS/s profile has a recorded realtime result | Deferred | Current stored profile is configuration-specific and explicitly makes no 100 MS/s realtime claim |
 | FFTW licensing/distribution is documented | Enforced | managed library is MIT; FFTW DLL is separately licensed and excluded from NuGet |
 | README has a minimal request/process/output example | Enforced | self-contained example in [`README.md`](../../README.md) |
@@ -52,16 +52,15 @@ Status meanings:
 
 ## Release blockers and next gates
 
-The Conservative scalar/AVX2 implementation is correctness- and benchmark-audited, but the
+The Conservative scalar/AVX2/AVX-512 implementation is correctness- and benchmark-audited, but the
 full project Definition of Done is not complete. The remaining gates are:
 
-1. AVX-512 remains disabled unless a separate prototype demonstrates end-to-end value over AVX2;
-2. accepted comparative correctness/performance data before FoldAware or selected-bin work;
-3. a target 100 MS/s end-to-end profile before any realtime claim;
-4. a versioned strategy-comparison profile before enabling channelizer strategy `Auto`; and
-5. clean-environment validation that the inspected managed-only NuGet works with an
+1. accepted comparative correctness/performance data before FoldAware or selected-bin work;
+2. a target 100 MS/s end-to-end profile before any realtime claim;
+3. a versioned strategy-comparison profile before enabling channelizer strategy `Auto`; and
+4. clean-environment validation that the inspected managed-only NuGet works with an
    independently supplied compatible runtime.
 
 The detailed fixture map and reproducible commands are in
-[`manifest.md`](manifest.md). Stored scalar signal and scalar/AVX2 performance summaries are under
+[`manifest.md`](manifest.md). Stored scalar signal and scalar/AVX2/AVX-512 performance summaries are under
 `artifacts/signal-validation/` and `artifacts/benchmarks/`.

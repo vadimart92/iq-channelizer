@@ -12,7 +12,7 @@ internal static class StageProfileRunner
     private const int ChannelCount = 8;
     private const int ChunkSize = 4096;
     private const int DefaultIterations = 2000;
-    private const int StabilizationIterations = 2048;
+    private const int StabilizationIterations = 8192;
 
     public static void Run(string[] args)
     {
@@ -29,9 +29,16 @@ internal static class StageProfileRunner
 
         var fullPath = Path.GetFullPath(outputPath);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-        var backends = Avx2.IsSupported && Fma.IsSupported
-            ? new[] { SimdPreference.Scalar, SimdPreference.Avx2 }
-            : new[] { SimdPreference.Scalar };
+        var backends = new List<SimdPreference> { SimdPreference.Scalar };
+        if (Avx2.IsSupported && Fma.IsSupported)
+        {
+            backends.Add(SimdPreference.Avx2);
+        }
+
+        if (Avx512F.IsSupported)
+        {
+            backends.Add(SimdPreference.Avx512);
+        }
         var results = new List<EngineStageProfile>();
         foreach (var backend in backends)
         {

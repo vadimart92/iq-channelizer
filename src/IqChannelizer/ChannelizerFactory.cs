@@ -29,7 +29,10 @@ public static class ChannelizerFactory
 
     private static IStreamingChannelizer CreateFdc(ChannelizerRequest request)
     {
-        var simdBackend = SimdBackendResolver.Resolve(request.Hints?.Simd ?? SimdPreference.Auto);
+        // End-to-end evidence favors AVX2 slightly for FDC even though the isolated AVX-512 extraction kernel is faster.
+        var simdBackend = SimdBackendResolver.Resolve(
+            request.Hints?.Simd ?? SimdPreference.Auto,
+            autoPreferAvx512: false);
         var layout = FdcPlanner.CreateLayout(request);
         var requirements = layout.InputRequirements;
         var history = requirements.HistorySize;
@@ -59,9 +62,12 @@ public static class ChannelizerFactory
             InputSampleRateHz = request.InputSampleRateHz,
             InputRequirements = requirements,
             Channels = channels,
-            DspBackend = simdBackend == SimdPreference.Avx2
-                ? $"FFTW {FftwRuntime.Info.Version} single-precision C2C with AVX2/FMA extraction"
-                : $"FFTW {FftwRuntime.Info.Version} single-precision C2C with scalar extraction",
+            DspBackend = simdBackend switch
+            {
+                SimdPreference.Avx512 => $"FFTW {FftwRuntime.Info.Version} single-precision C2C with AVX-512F extraction",
+                SimdPreference.Avx2 => $"FFTW {FftwRuntime.Info.Version} single-precision C2C with AVX2/FMA extraction",
+                _ => $"FFTW {FftwRuntime.Info.Version} single-precision C2C with scalar extraction"
+            },
             SelectedSimdBackend = simdBackend,
             ChunkAlignment = layout.MaximumDecimation,
             FftwThreadCount = 1,
@@ -113,7 +119,10 @@ public static class ChannelizerFactory
 
     private static IStreamingChannelizer CreatePfb(ChannelizerRequest request)
     {
-        var simdBackend = SimdBackendResolver.Resolve(request.Hints?.Simd ?? SimdPreference.Auto);
+        // The AVX-512 PFB FIR advantage survives the full engine benchmark.
+        var simdBackend = SimdBackendResolver.Resolve(
+            request.Hints?.Simd ?? SimdPreference.Auto,
+            autoPreferAvx512: true);
         var layout = PfbPlanner.CreateLayout(request);
         var fftSize = layout.FftSize;
         var hopSize = layout.HopSize;
@@ -165,7 +174,9 @@ public static class ChannelizerFactory
         }
 
         var nativeBytes = checked(16L * transformValues);
-        var simdCoefficientBytes = simdBackend == SimdPreference.Avx2 ? 8L * prototype.Taps.Length : 0;
+        var simdCoefficientBytes = simdBackend is SimdPreference.Avx2 or SimdPreference.Avx512
+            ? 8L * prototype.Taps.Length
+            : 0;
         var workingSetBytes = checked(nativeBytes + (16L * transformValues) +
                                        (24L * frames * channels.Length) + (4L * prototype.Taps.Length) +
                                        fineStages.Sum(stage => 16L * stage.Taps.Length) + simdCoefficientBytes);
@@ -175,9 +186,14 @@ public static class ChannelizerFactory
             InputSampleRateHz = request.InputSampleRateHz,
             InputRequirements = requirements,
             Channels = Array.AsReadOnly(channels),
-            DspBackend = simdBackend == SimdPreference.Avx2
-                ? $"FFTW {FftwRuntime.Info.Version} single-precision batched C2C with AVX2/FMA PFB FIR"
-                : $"FFTW {FftwRuntime.Info.Version} single-precision batched C2C with scalar PFB FIR",
+            DspBackend = simdBackend switch
+            {
+                SimdPreference.Avx512 =>
+                    $"FFTW {FftwRuntime.Info.Version} single-precision batched C2C with AVX-512F PFB FIR",
+                SimdPreference.Avx2 =>
+                    $"FFTW {FftwRuntime.Info.Version} single-precision batched C2C with AVX2/FMA PFB FIR",
+                _ => $"FFTW {FftwRuntime.Info.Version} single-precision batched C2C with scalar PFB FIR"
+            },
             SelectedSimdBackend = simdBackend,
             ChunkAlignment = hopSize,
             FftwThreadCount = 1,

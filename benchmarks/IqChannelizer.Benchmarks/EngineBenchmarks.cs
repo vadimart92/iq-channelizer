@@ -22,9 +22,22 @@ public class EngineBenchmarks
     [ParamsSource(nameof(Backends))]
     public SimdPreference Simd { get; set; }
 
-    public IEnumerable<SimdPreference> Backends => Avx2.IsSupported && Fma.IsSupported
-        ? [SimdPreference.Scalar, SimdPreference.Avx2]
-        : [SimdPreference.Scalar];
+    public IEnumerable<SimdPreference> Backends
+    {
+        get
+        {
+            yield return SimdPreference.Scalar;
+            if (Avx2.IsSupported && Fma.IsSupported)
+            {
+                yield return SimdPreference.Avx2;
+            }
+
+            if (Avx512F.IsSupported)
+            {
+                yield return SimdPreference.Avx512;
+            }
+        }
+    }
 
     [GlobalSetup]
     public void Setup()

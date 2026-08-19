@@ -12,7 +12,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
     private readonly InverseGroup[] _inverseGroups;
     private readonly ComplexF[][] _outputs;
     private readonly FdcChannelDesign[] _channelDesigns;
-    private readonly bool _useAvx2;
+    private readonly SimdPreference _simdBackend;
 
     public FftwFdcEngine(
         ResolvedChannelizerPlan plan,
@@ -22,7 +22,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
         : base(plan, diagnosticsMode)
     {
         _channelDesigns = channelDesigns;
-        _useAvx2 = simdBackend == SimdPreference.Avx2;
+        _simdBackend = simdBackend;
         var transformLength = InputRequirements.InputSize;
         _forwardPlan = new FftwComplexPlan(transformLength, 1, FftwNative.Forward);
         _spectrum = new ComplexF[transformLength];
@@ -84,7 +84,16 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
                     channel.CoarseCenterFrequencyHz,
                     Plan.InputSampleRateHz,
                     frameStartInputIndex);
-                if (_useAvx2)
+                if (_simdBackend == SimdPreference.Avx512)
+                {
+                    SpectralSliceExtractor.ExtractAvx512Unchecked(
+                        _spectrum,
+                        channel.CoarseBin,
+                        _channelDesigns[channelIndex].SpectralWindow,
+                        blockPhase,
+                        inverseInput);
+                }
+                else if (_simdBackend == SimdPreference.Avx2)
                 {
                     SpectralSliceExtractor.ExtractAvx2Unchecked(
                         _spectrum,

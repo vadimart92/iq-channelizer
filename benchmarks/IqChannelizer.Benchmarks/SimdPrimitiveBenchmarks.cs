@@ -35,6 +35,18 @@ public class FdcExtractionBenchmarks
         SpectralSliceExtractor.ExtractAvx2Unchecked(_spectrum, 4000, _window, new ComplexF(0.8f, -0.6f), _output);
         return _output[^1];
     }
+
+    [Benchmark]
+    public ComplexF Avx512()
+    {
+        SpectralSliceExtractor.ExtractAvx512Unchecked(
+            _spectrum,
+            4000,
+            _window,
+            new ComplexF(0.8f, -0.6f),
+            _output);
+        return _output[^1];
+    }
 }
 
 [MemoryDiagnoser]

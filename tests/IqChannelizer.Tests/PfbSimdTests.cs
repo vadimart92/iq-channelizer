@@ -114,4 +114,99 @@ public sealed class PfbSimdTests
 
         Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero);
     }
+
+    [TestCase(8, 3, 3, 5, 29)]
+    [TestCase(16, 7, 2, 7, -11)]
+    [TestCase(32, 13, 4, 6, 10_003)]
+    [TestCase(2, 1, 3, 5, 7)]
+    public void Avx512PhaseParallelKernelMatchesScalarDirectRotatedStore(
+        int fftSize,
+        int hopSize,
+        int tapsPerPhase,
+        int frames,
+        long firstNewSampleIndex)
+    {
+        if (!Avx512F.IsSupported)
+        {
+            Assert.Ignore("AVX-512F is not supported on this test host.");
+        }
+
+        var random = new Random(fftSize * 2000 + hopSize * 100 + frames);
+        var prototype = Enumerable.Range(0, fftSize * tapsPerPhase)
+            .Select(_ => (float)((random.NextDouble() - 0.5) / tapsPerPhase))
+            .ToArray();
+        var history = prototype.Length - 1;
+        var inputLength = history + (hopSize * frames);
+        var inputStorage = new ComplexF[inputLength + 1];
+        for (var index = 0; index < inputLength; index++)
+        {
+            inputStorage[index + 1] = new ComplexF(
+                (float)((random.NextDouble() * 2) - 1),
+                (float)((random.NextDouble() * 2) - 1));
+        }
+
+        var scalarStorage = new ComplexF[(fftSize * frames) + 1];
+        var avxStorage = new ComplexF[(fftSize * frames) + 2];
+        var input = inputStorage.AsSpan(1, inputLength);
+        var scalar = scalarStorage.AsSpan(1, fftSize * frames);
+        var avx = avxStorage.AsSpan(2, fftSize * frames);
+        var spanAbsoluteStart = firstNewSampleIndex - history;
+        PfbPhaseFir.FillBatchScalar(
+            input,
+            spanAbsoluteStart,
+            firstNewSampleIndex,
+            hopSize,
+            frames,
+            fftSize,
+            prototype,
+            scalar);
+        var coefficients = new Avx512PfbCoefficients(prototype, fftSize);
+        PfbPhaseFir.FillBatchAvx512(
+            input,
+            spanAbsoluteStart,
+            firstNewSampleIndex,
+            hopSize,
+            frames,
+            prototype,
+            coefficients,
+            avx);
+
+        for (var index = 0; index < scalar.Length; index++)
+        {
+            var scalarValue = scalar[index];
+            var avxValue = avx[index];
+            Assert.Multiple(() =>
+            {
+                Assert.That(avxValue.Real, Is.EqualTo(scalarValue.Real).Within(3e-6f), $"real[{index}]");
+                Assert.That(avxValue.Imaginary, Is.EqualTo(scalarValue.Imaginary).Within(3e-6f), $"imag[{index}]");
+            });
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Avx512PhaseParallelKernelDoesNotAllocateInSteadyState()
+    {
+        if (!Avx512F.IsSupported)
+        {
+            Assert.Ignore("AVX-512F is not supported on this test host.");
+        }
+
+        const int fftSize = 16;
+        const int hopSize = 7;
+        const int frames = 5;
+        var prototype = Enumerable.Repeat(1f / 48, 48).ToArray();
+        var history = prototype.Length - 1;
+        var input = new ComplexF[history + (hopSize * frames)];
+        var output = new ComplexF[fftSize * frames];
+        var coefficients = new Avx512PfbCoefficients(prototype, fftSize);
+        PfbPhaseFir.FillBatchAvx512(input, -history, 0, hopSize, frames, prototype, coefficients, output);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var iteration = 0; iteration < 100; iteration++)
+        {
+            PfbPhaseFir.FillBatchAvx512(input, -history, 0, hopSize, frames, prototype, coefficients, output);
+        }
+
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero);
+    }
 }

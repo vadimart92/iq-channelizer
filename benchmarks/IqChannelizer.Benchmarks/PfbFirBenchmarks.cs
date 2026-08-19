@@ -14,6 +14,7 @@ public class PfbFirBenchmarks
     private float[] _prototype = null!;
     private ComplexF[] _output = null!;
     private Avx2PfbCoefficients _coefficients = null!;
+    private Avx512PfbCoefficients _avx512Coefficients = null!;
 
     [Params(8, 20)]
     public int TapsPerPhase { get; set; }
@@ -26,6 +27,7 @@ public class PfbFirBenchmarks
         _input = new ComplexF[history + (HopSize * Frames)];
         _output = new ComplexF[FftSize * Frames];
         _coefficients = new Avx2PfbCoefficients(_prototype, FftSize);
+        _avx512Coefficients = new Avx512PfbCoefficients(_prototype, FftSize);
         for (var index = 0; index < _input.Length; index++)
         {
             _input[index] = ComplexF.FromPolar(index * 0.013);
@@ -73,6 +75,21 @@ public class PfbFirBenchmarks
             Frames,
             _prototype,
             _coefficients,
+            _output);
+        return _output[^1];
+    }
+
+    [Benchmark(OperationsPerInvoke = HopSize * Frames)]
+    public ComplexF Avx512Expanded()
+    {
+        PfbPhaseFir.FillBatchAvx512(
+            _input,
+            -(_prototype.Length - 1),
+            0,
+            HopSize,
+            Frames,
+            _prototype,
+            _avx512Coefficients,
             _output);
         return _output[^1];
     }

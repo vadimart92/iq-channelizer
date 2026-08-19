@@ -53,13 +53,21 @@ public sealed class ContractTests
     }
 
     [Test]
-    public void ForcedAvx512RemainsBehindBenchmarkGate()
+    public void ForcedAvx512IsSelectedWhenSupportedAndRejectedOtherwise()
     {
         var request = Request(ChannelizerStrategy.Fdc, [Channel(1, 0)]) with
         {
             Hints = new ChannelizerImplementationHints(Simd: SimdPreference.Avx512)
         };
-        Assert.That(() => ChannelizerFactory.Create(request), Throws.TypeOf<NotSupportedException>());
+        if (System.Runtime.Intrinsics.X86.Avx512F.IsSupported)
+        {
+            using var engine = ChannelizerFactory.Create(request);
+            Assert.That(engine.Plan.SelectedSimdBackend, Is.EqualTo(SimdPreference.Avx512));
+        }
+        else
+        {
+            Assert.That(() => ChannelizerFactory.Create(request), Throws.TypeOf<PlatformNotSupportedException>());
+        }
     }
 
     [Test]

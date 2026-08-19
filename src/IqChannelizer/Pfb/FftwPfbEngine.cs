@@ -12,6 +12,7 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
     private readonly int _frames;
     private readonly float[] _prototype;
     private readonly Avx2PfbCoefficients? _avx2Coefficients;
+    private readonly Avx512PfbCoefficients? _avx512Coefficients;
     private readonly FftwComplexPlan _backwardPlan;
     private readonly ComplexF[] _fftOutput;
     private readonly int[] _uniqueBins;
@@ -39,6 +40,9 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         _avx2Coefficients = simdBackend == SimdPreference.Avx2
             ? new Avx2PfbCoefficients(prototype, fftSize)
             : null;
+        _avx512Coefficients = simdBackend == SimdPreference.Avx512
+            ? new Avx512PfbCoefficients(prototype, fftSize)
+            : null;
         _backwardPlan = new FftwComplexPlan(fftSize, frames, FftwNative.Backward);
         _fftOutput = new ComplexF[checked(fftSize * frames)];
         _uniqueBins = plan.Channels.Select(channel => channel.CoarseBin).Distinct().ToArray();
@@ -56,7 +60,19 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
     {
         var spanAbsoluteStart = firstNewSampleIndex - InputRequirements.HistorySize;
         var polyphaseStartedAt = Diagnostics.BeginTiming();
-        if (_avx2Coefficients is { } coefficients)
+        if (_avx512Coefficients is { } avx512Coefficients)
+        {
+            PfbPhaseFir.FillBatchAvx512(
+                input,
+                spanAbsoluteStart,
+                firstNewSampleIndex,
+                _hopSize,
+                _frames,
+                _prototype,
+                avx512Coefficients,
+                _backwardPlan.WritableInput);
+        }
+        else if (_avx2Coefficients is { } coefficients)
         {
             PfbPhaseFir.FillBatchAvx2(
                 input,

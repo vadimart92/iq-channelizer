@@ -6,23 +6,30 @@ namespace IqChannelizer.Tests;
 
 public sealed class SimdEngineTests
 {
-    [TestCase(ChannelizerStrategy.Fdc)]
-    [TestCase(ChannelizerStrategy.Pfb)]
-    public void ForcedAvx2MatchesScalarAcrossProcessPartitions(ChannelizerStrategy strategy)
+    [TestCase(ChannelizerStrategy.Fdc, SimdPreference.Avx2)]
+    [TestCase(ChannelizerStrategy.Pfb, SimdPreference.Avx2)]
+    [TestCase(ChannelizerStrategy.Fdc, SimdPreference.Avx512)]
+    [TestCase(ChannelizerStrategy.Pfb, SimdPreference.Avx512)]
+    public void ForcedSimdMatchesScalarAcrossProcessPartitions(ChannelizerStrategy strategy, SimdPreference simd)
     {
-        if (!Avx2.IsSupported || !Fma.IsSupported)
+        if (simd == SimdPreference.Avx2 && (!Avx2.IsSupported || !Fma.IsSupported))
         {
             Assert.Ignore("AVX2/FMA is not supported on this test host.");
         }
 
+        if (simd == SimdPreference.Avx512 && !Avx512F.IsSupported)
+        {
+            Assert.Ignore("AVX-512F is not supported on this test host.");
+        }
+
         var scalarRequest = CreateRequest(strategy, SimdPreference.Scalar);
-        var avxRequest = CreateRequest(strategy, SimdPreference.Avx2);
+        var avxRequest = CreateRequest(strategy, simd);
         using var scalarEngine = ChannelizerFactory.Create(scalarRequest);
         using var avxEngine = ChannelizerFactory.Create(avxRequest);
         Assert.Multiple(() =>
         {
-            Assert.That(avxEngine.Plan.SelectedSimdBackend, Is.EqualTo(SimdPreference.Avx2));
-            Assert.That(avxEngine.Plan.DspBackend, Does.Contain("AVX2/FMA"));
+            Assert.That(avxEngine.Plan.SelectedSimdBackend, Is.EqualTo(simd));
+            Assert.That(avxEngine.Plan.DspBackend, Does.Contain(simd == SimdPreference.Avx512 ? "AVX-512F" : "AVX2/FMA"));
             Assert.That(avxEngine.InputRequirements, Is.EqualTo(scalarEngine.InputRequirements));
         });
 
@@ -67,22 +74,34 @@ public sealed class SimdEngineTests
         }
     }
 
-    [Test]
-    public void AutoSelectsBestAvailableImplementedBackendOnceAtCreation()
+    [TestCase(ChannelizerStrategy.Fdc)]
+    [TestCase(ChannelizerStrategy.Pfb)]
+    public void AutoSelectsBestAvailableImplementedBackendOnceAtCreation(ChannelizerStrategy strategy)
     {
-        using var engine = ChannelizerFactory.Create(CreateRequest(ChannelizerStrategy.Pfb, SimdPreference.Auto));
-        var expected = Avx2.IsSupported && Fma.IsSupported ? SimdPreference.Avx2 : SimdPreference.Scalar;
+        using var engine = ChannelizerFactory.Create(CreateRequest(strategy, SimdPreference.Auto));
+        var avx2Supported = Avx2.IsSupported && Fma.IsSupported;
+        var expected = strategy == ChannelizerStrategy.Pfb && Avx512F.IsSupported
+            ? SimdPreference.Avx512
+            : avx2Supported
+                ? SimdPreference.Avx2
+                : Avx512F.IsSupported ? SimdPreference.Avx512 : SimdPreference.Scalar;
         Assert.That(engine.Plan.SelectedSimdBackend, Is.EqualTo(expected));
     }
 
     [TestCase(SimdPreference.Scalar)]
     [TestCase(SimdPreference.Avx2)]
+    [TestCase(SimdPreference.Avx512)]
     [NonParallelizable]
     public void RepresentativePfbProfileDoesNotAllocateAcrossTwoThousandCalls(SimdPreference simd)
     {
         if (simd == SimdPreference.Avx2 && (!Avx2.IsSupported || !Fma.IsSupported))
         {
             Assert.Ignore("AVX2/FMA is not supported on this test host.");
+        }
+
+        if (simd == SimdPreference.Avx512 && !Avx512F.IsSupported)
+        {
+            Assert.Ignore("AVX-512F is not supported on this test host.");
         }
 
         var channels = Enumerable.Range(0, 8)
