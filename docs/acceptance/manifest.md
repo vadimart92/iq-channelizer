@@ -22,6 +22,7 @@ remains under ignored `TestResults/` and `BenchmarkDotNet.Artifacts/` directorie
 | Diagnostics counters, stage timing, fault/reset status and enabled/disabled allocation contract | Runtime owner | `DiagnosticsTests` | Enforced |
 | Unified facade plan snapshots, lifecycle and reconfiguration boundary | Core API owner | `ContractTests.ResolvedPlanCollectionsAreImmutableSnapshots`, `docs/facade.md` | Enforced |
 | Scalar/AVX2/AVX-512 primitive, FFTW, planning, FDC and PFB statistical evidence exists | Performance owner | `artifacts/benchmarks/latest-summary.md`, retained BDN CSV/Markdown, and schema-v2 `stage-profile.json` | Enforced for recorded configurations; no general realtime claim |
+| Named 100 MS/s target has an end-to-end realtime result | Performance owner | `TargetRateProfileRunner`, `TargetRateProfileTests`, `artifacts/benchmarks/target-100ms-profile.json` | Enforced for the recorded Ryzen 5 8500G PFB configuration; no portable guarantee |
 | Managed-only NuGet excludes FFTW native assets and runs in a clean consumer | Release owner | `build/verify-package.ps1`, `artifacts/package-validation.json`; native assets have `Pack=false` | Enforced |
 | SIMD dispatch, scalar fallback and unsupported-ISA behavior | Performance owner | `ContractTests`, `SimdEngineTests`, `SimdTests` | Enforced for Scalar, AVX2/FMA and AVX-512F |
 | AVX2/AVX-512 PFB direct rotated-store FIR | DSP/performance owner | `PfbSimdTests`, `PfbAlgebraTests`, `PfbProductionFlowTests`, retained `PfbFirBenchmarks` reports | Enforced |

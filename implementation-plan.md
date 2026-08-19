@@ -2641,7 +2641,7 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 
 ## 17. Поточний стан і execution checklist для sub-агента
 
-Цей розділ є аудитом repository станом на **2026-08-19**, перевіреним на base commit `6aaa8ae` + current profile-backed Auto changeset. Він не змінює вимоги розділів 1–16. Операційна черга винесена в [`implementation-steps.md`](implementation-steps.md); якщо tracker конфліктує з математичним або API contract цього документа, пріоритет мають розділи 1–16.
+Цей розділ є аудитом repository станом на **2026-08-19**, перевіреним на base commit `3a39739` + current target 100 MS/s evidence changeset. Він не змінює вимоги розділів 1–16. Операційна черга винесена в [`implementation-steps.md`](implementation-steps.md); якщо tracker конфліктує з математичним або API contract цього документа, пріоритет мають розділи 1–16.
 
 ### 17.1. Звірка поточної реалізації з планом
 
@@ -2665,12 +2665,12 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 | Phase 7: PFB algebra MVP | готово | Generic `K/H`; Conservative Kaiser `T=K*P`, `P>1` scalar branch equation; exact FIR group delay; independent double direct FIR+DFT oracle; explicit correction/pre-FFT shift equivalence; `H=K`, `H=K/2`, arbitrary H, signed-bin, non-aligned-origin і partition tests | Немає для algebra scope; production SIMD реалізований у Phase 8 |
 | Phase 8: PFB production path | готово (scalar/AVX2/AVX-512) | Filtered phase vectors пишуться прямо у FFTW-owned input; AVX2/AVX-512 vectorize four/eight phases with expanded coefficients and direct two-segment rotated store; batched transform; precomputed unique-bin gather/fan-out; periodic residual rotation; per-channel validated stateful power-of-two fine FIR/decimator; exact counts/delays; Reset/no-allocation/independent-DDC tests | fine-stage specialization лишається measured future scope |
 | Phase 9: generalized PFB planner | готово (Conservative default + explicit FoldAware) | Deterministic power-of-two `K`, arbitrary integer `H`, bounded frames, geometry/output/chunk feasibility, exact Conservative/FoldAware/fine validation, partial/forced hints, non-2× end-to-end selection | Benchmark-backed ranking і automatic FoldAware selection лишаються окремими profile gates |
-| Phase 10: performance tuning | частково | Retained 18-case scalar/AVX2/AVX-512 engine matrix; SIMD kernel comparisons; zero-allocation schema-v2 three-backend stage profile, p50/p95/p99/max, working set і stage breakdown; PFB AVX-512 та explicit FoldAware мають measured end-to-end benefit | 100 MS/s realtime не заявлено |
+| Phase 10: performance tuning | готово для recorded scope | Retained 18-case scalar/AVX2/AVX-512 engine matrix; SIMD kernel comparisons; zero-allocation stage profiles; PFB AVX-512 та explicit FoldAware benefit; named target PFB sustained 199.17 MS/s | Result не є portable guarantee |
 | Phase 11: selected-bin PFB | виміряно, production path відкладено | Scalar/AVX2/AVX-512 direct-DFT prototype, equivalence/no-allocation tests і retained crossover benchmark для `K=64/512`, `Q=1/4/8` | Не підключати: direct DFT програє частині shapes, а full FFT займає лише ~9.1% representative PFB stage time |
 | Phase 12: unified facade | готово | `ChannelizerFactory` exposes FDC/PFB through one API; immutable plan snapshots, allocation-free diagnostics, complete example і reset/new-engine reconfiguration semantics задокументовані | Немає для facade scope |
 | Phase 13: Auto planner | готово для exact profile scope | Versioned equal-spec Q=1/8/32 profile; exact environment/request matching; FDC decision with plan key/explanation; actionable rejection outside profile | Розширювати coverage лише новими accepted profiles, без extrapolation |
-| Signal tests | готово (Conservative/FoldAware scalar/AVX2/AVX-512 scope) | 235 unit/integration tests: independent-DDC checks, Conservative/FoldAware PFB blocker sweeps, FDC alias images, worst residuals, partition invariance, SIMD equivalence, strategy-profile enforcement, Dfine=1 blocker, Nyquist wrap, sink fault/reset і adversarial response-grid coverage | Немає для поточного correctness scope |
-| Benchmarks | готово (scalar/AVX2/AVX-512 + Step 14 experiments) | BenchmarkDotNet 0.15.8; retained 18-case engine comparison, SIMD kernel comparisons, FoldAware end-to-end та selected-bin crossover CSV/Markdown, schema-v2 working-set/stage profile | target 100 MS/s realtime result відкладений |
+| Signal tests | готово (Conservative/FoldAware scalar/AVX2/AVX-512 scope) | 236 unit/integration tests: independent-DDC checks, Conservative/FoldAware PFB blocker sweeps, FDC alias images, worst residuals, partition invariance, SIMD equivalence, strategy/target profile enforcement, Dfine=1 blocker, Nyquist wrap, sink fault/reset і adversarial response-grid coverage | Немає для поточного correctness scope |
+| Benchmarks | готово | BenchmarkDotNet 0.15.8; retained engine/SIMD/FoldAware/selected-bin comparisons, schema-v2 working-set/stage profile та named 100 MS/s target result | Немає для documented scope |
 | Diagnostics/docs/package | готово для managed-only scope | Allocation-free counters/stage timing, README, facade guide, ADR, acceptance manifest/report, benchmark guide, versioned backend string, FFTW provenance/licensing, packable managed-only NuGet і isolated clean-consumer verification | FFTW redistribution не входить до package scope; consumer постачає runtime окремо |
 
 Поточні важливі обмеження, які не можна помилково вважати production behavior:
@@ -2682,7 +2682,7 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 5. PFB і FDC extraction напряму заповнюють FFTW-owned writable inputs; FFTW outputs усе ще копіюються у managed routing/output buffers за поточним ownership contract.
 6. Fine stages є scalar Kaiser implementations; re-profile не виправдав їх пріоритет над PFB polyphase, а cascaded half-band specialization залишається performance work, не correctness blocker.
 7. Channelizer strategy `Auto` доступна лише для exact match профілю `equal-spec-1m-10k-q1-8-32-v1`; FoldAware доступний лише як explicit hint, а selected-bin production path лишається unwired відповідно до stored comparative data.
-8. Decision-grade scalar/AVX2/AVX-512 benchmark, Step 14 comparisons і stage profile збережені, але вони configuration-specific; target 100 MS/s realtime performance не заявляється.
+8. Decision-grade scalar/AVX2/AVX-512 benchmarks, Step 14 comparisons, stage profile і target 100 MS/s result збережені. PFB досяг 199.17 MS/s лише у named configuration; portable performance не заявляється.
 
 ### 17.2. Правила роботи для sub-агента
 
@@ -2704,4 +2704,4 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 
 ### 17.4. Найближчий рекомендований інкремент
 
-Кроки 0–14 та facade/docs/managed-only package/exact profile-backed Auto частина Кроку 15 перевірені для Conservative/explicit FoldAware scalar/AVX2/AVX-512 scope. Наступний інкремент — target 100 MS/s end-to-end profile; до нього realtime claim заборонений. Selected-bin production path лишається unwired за результатами crossover і stage profile.
+Кроки 0–15 та Definition of Done перевірені для documented managed-only Windows x64, Conservative/explicit FoldAware, scalar/AVX2/AVX-512 scope. Наступного запланованого інкременту немає. Target 100 MS/s result є configuration-specific, `Auto` guarded exact profile match, а selected-bin production path лишається unwired за результатами crossover і stage profile.

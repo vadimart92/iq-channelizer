@@ -1,0 +1,70 @@
+{
+  "SchemaVersion": 1,
+  "Commit": "3a39739\u002Btarget100ms",
+  "GeneratedAtUtc": "2026-08-19T16:11:47.9242052+00:00",
+  "Environment": {
+    "Runtime": ".NET 10.0.11",
+    "OperatingSystem": "Microsoft Windows 10.0.26200",
+    "ProcessArchitecture": "X64",
+    "LogicalProcessorCount": 12,
+    "ProcessorIdentifier": "AMD64 Family 25 Model 120 Stepping 0, AuthenticAMD"
+  },
+  "Configuration": {
+    "InputSampleRateHz": 100000000,
+    "ChannelCount": 8,
+    "ChunkSize": 32768,
+    "Iterations": 500,
+    "SignalSpecification": "15 kHz passband, 5 kHz transition, 60 dB stopband, centers aligned to K=4096 bins"
+  },
+  "Results": [
+    {
+      "Strategy": "Fdc",
+      "SelectedSimdBackend": "Avx2",
+      "FilterDesignMode": "KaiserConservativeOverlapSave",
+      "FftSize": 393216,
+      "HopSize": null,
+      "FramesPerBatch": null,
+      "HistorySize": 360448,
+      "ChunkSize": 32768,
+      "EstimatedWorkingSetBytes": 9462272,
+      "ManagedAllocatedBytes": 0,
+      "NanosecondsPerInputSample": 124.70745239257812,
+      "SustainedInputMegaSamplesPerSecond": 8.018766968729404,
+      "RealtimeMarginAt100MegaSamplesPerSecond": 0.08018766968729403,
+      "MeetsTargetRate": false,
+      "LatencyMilliseconds": {
+        "P50": 4.0797,
+        "P95": 4.2058,
+        "P99": 4.2799,
+        "Maximum": 4.8465
+      },
+      "OutputSamples": 32000,
+      "Checksum": 21168
+    },
+    {
+      "Strategy": "Pfb",
+      "SelectedSimdBackend": "Avx512",
+      "FilterDesignMode": "KaiserFoldAware",
+      "FftSize": 4096,
+      "HopSize": 2048,
+      "FramesPerBatch": 16,
+      "HistorySize": 28671,
+      "ChunkSize": 32768,
+      "EstimatedWorkingSetBytes": 2454144,
+      "ManagedAllocatedBytes": 0,
+      "NanosecondsPerInputSample": 5.0208984375,
+      "SustainedInputMegaSamplesPerSecond": 199.1675419146536,
+      "RealtimeMarginAt100MegaSamplesPerSecond": 1.991675419146536,
+      "MeetsTargetRate": true,
+      "LatencyMilliseconds": {
+        "P50": 0.16,
+        "P95": 0.1778,
+        "P99": 0.2171,
+        "Maximum": 0.4281
+      },
+      "OutputSamples": 32000,
+      "Checksum": 21168
+    }
+  ],
+  "AnyStrategyMeetsTarget": true
+}

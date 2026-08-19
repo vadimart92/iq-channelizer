@@ -1,11 +1,11 @@
 # Definition-of-Done acceptance report
 
 This report audits section 14 of [`implementation-plan.md`](../../implementation-plan.md)
-against the Conservative/explicit FoldAware scalar/AVX2/AVX-512 milestone at commit `6aaa8ae`
-plus the current profile-backed Auto changeset. It records capability status; it is not a redistributable-release approval
+against the Conservative/explicit FoldAware scalar/AVX2/AVX-512 milestone at commit `3a39739`
+plus the current target 100 MS/s evidence changeset. It records capability status; it is not a redistributable-release approval
 or a portable realtime claim.
 
-Verification date: **2026-08-19**. Release suite: **235 passed, 0 failed, 0 skipped**.
+Verification date: **2026-08-19**. Release suite: **236 passed, 0 failed, 0 skipped**.
 
 Status meanings:
 
@@ -14,7 +14,7 @@ Status meanings:
 - **Deferred** — requires the permission or measurement gate named in the plan;
 - **Blocked** — requires an external owner decision.
 
-| Definition-of-Done requirement | Status | Evidence / remaining gate |
+| Definition-of-Done requirement | Status | Evidence / scope |
 | --- | --- | --- |
 | FDC and generalized PFB share one API | Enforced | `ChannelizerFactory`, `IStreamingChannelizer`, `ContractTests` |
 | Public output-rate semantics are not power-of-two-only | Enforced | `ChannelRequest` rate requirements and generalized PFB planner tests |
@@ -45,17 +45,18 @@ Status meanings:
 | FFTW planning never occurs in `Process` | Enforced | FFTW plan-cache/runtime design and execution tests |
 | Both engines match the independent DDC | Enforced | FDC/PFB signal acceptance fixtures |
 | Benchmarks cover primitives, FFTW, FDC, PFB, SIMD backends and gated Step 14 candidates | Enforced | retained 18-case scalar/AVX2/AVX-512 engine BDN plus PFB FIR, FDC extraction, rotator, FoldAware end-to-end and selected-bin crossover comparisons |
-| Target 100 MS/s profile has a recorded realtime result | Deferred | Current stored profile is configuration-specific and explicitly makes no 100 MS/s realtime claim |
+| Target 100 MS/s profile has a recorded realtime result | Enforced | 500-iteration target profile: FoldAware PFB AVX-512 sustained 199.17 MS/s (1.99x margin), FDC 8.02 MS/s; both 0 allocations; named-machine result only |
 | FFTW licensing/distribution is documented | Enforced | managed library is MIT; FFTW DLL is separately licensed and excluded from NuGet; isolated package consumer passes with a separately supplied runtime |
 | README has a minimal request/process/output example | Enforced | self-contained example in [`README.md`](../../README.md) |
 | Every `Auto` decision is backed by a stored profile | Enforced | exact environment/request matching in `StrategyProfileSelector`, stored `strategy-profile-v1.json`, plan key/explanation; unmatched cases throw |
 
-## Release blockers and next gates
+## Scope boundaries
 
-The Conservative/explicit FoldAware scalar/AVX2/AVX-512 implementation is correctness- and benchmark-audited, but the
-full project Definition of Done is not complete. The remaining gate is:
-
-1. a target 100 MS/s end-to-end profile before any realtime claim.
+The Conservative/explicit FoldAware scalar/AVX2/AVX-512 implementation now satisfies the
+repository Definition of Done for the recorded managed-only, Windows x64 scope. The 100 MS/s
+result applies only to the named PFB configuration and machine; it is not a portable realtime
+guarantee. FFTW redistribution remains outside the NuGet package, and `Auto` remains guarded
+outside its exact accepted profile.
 
 Selected-bin/direct-DFT is intentionally not a release blocker: its stored crossover is
 shape-limited, and the representative stage profile attributes only about 9.1% of PFB time

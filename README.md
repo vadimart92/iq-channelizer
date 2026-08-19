@@ -65,6 +65,11 @@ environment and exact 1 MS/s, 4096-sample, 1/8/32-channel request family. A matc
 to FDC and records the profile key plus explanation in the plan; every other request throws
 an actionable `NotSupportedException` and must force `Fdc` or `Pfb` explicitly.
 
+On the named Ryzen 5 8500G/.NET 10.0.11/FFTW 3.3.5 target profile, FoldAware PFB
+`K=4096,H=2048,F=16` sustained 199.17 MS/s for the recorded eight-channel 100 MHz
+configuration with zero managed allocations; FDC sustained 8.02 MS/s. These are retained,
+configuration-specific results, not a portable realtime guarantee.
+
 The fine stage selects a per-channel power-of-two factor that divides the frame batch. A real per-channel FIR is retained even when that factor is one, unless the requested stop edge is at or beyond the coarse Nyquist boundary. Channels sharing a coarse bin reuse one gathered stream before independent residual rotation, filtering, and decimation; FIR startup state is represented by the resolved group-delay metadata.
 
 `ResolvedChannelizerPlan` contains immutable engine and per-channel rates, FFT/PFB dimensions, exact output counts, group delay, and the first-output offset in input-sample units. The offset is relative to `firstNewSampleIndex`: for the causal symmetric FDC FIR it is `-GroupDelayInputSamples`; for the PFB prototype it is `HopSize - 1 - GroupDelayInputSamples`.

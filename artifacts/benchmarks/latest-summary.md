@@ -85,6 +85,21 @@ least 2.5x. Channelizer strategy `Auto` therefore selects FDC only when the reco
 Windows x64, .NET 10, FFTW 3.3.5, and exact request family all match; outside that scope it
 throws instead of extrapolating.
 
+## Target 100 MS/s profile
+
+The retained 500-iteration profile uses 100 MHz input metadata, eight bin-aligned channels,
+15 kHz passbands, 5 kHz transitions, 60 dB stopbands and 32,768-sample chunks. Both engines
+allocated 0 managed bytes during measurement.
+
+| Strategy | Resolved shape | ns/input sample | Sustained MS/s | Margin at 100 MS/s |
+| --- | --- | ---: | ---: | ---: |
+| FDC AVX2 | `D=4096`, `N=393216` | 124.707 | 8.019 | 0.080x |
+| FoldAware PFB AVX-512 | `K=4096,H=2048,F=16` | 5.021 | 199.168 | 1.992x |
+
+This records a successful realtime result for the named Ryzen 5 8500G / .NET 10.0.11 /
+FFTW 3.3.5 configuration. It is not a portable throughput guarantee; the stored profile
+also makes the failing FDC result explicit.
+
 ## Retained reports
 
 - [Engine Markdown](results/IqChannelizer.Benchmarks.EngineBenchmarks-report-github.md) / [CSV](results/IqChannelizer.Benchmarks.EngineBenchmarks-report.csv)

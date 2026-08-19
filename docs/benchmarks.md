@@ -47,3 +47,12 @@ It reports p50/p95/p99/max latency, managed allocation delta, resolved working-s
 process working-set snapshots, throughput and engine-specific stage ticks for scalar and
 available AVX2/AVX-512 backends. These figures are machine-specific evidence, not portable performance
 guarantees.
+
+For the named 100 MS/s target configuration (forced FDC `D=4096` versus FoldAware PFB
+`K=4096,H=2048,F=16`):
+
+```powershell
+dotnet run --project benchmarks/IqChannelizer.Benchmarks -c Release --no-build -- `
+  --target-100ms-profile --iterations 500 --commit <git-sha> `
+  --output artifacts/benchmarks/target-100ms-profile.json
+```
