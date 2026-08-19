@@ -26,7 +26,9 @@ remains under ignored `TestResults/` and `BenchmarkDotNet.Artifacts/` directorie
 | SIMD dispatch, scalar fallback and unsupported-ISA behavior | Performance owner | `ContractTests`, `SimdEngineTests`, `SimdTests` | Enforced for Scalar, AVX2/FMA and AVX-512F |
 | AVX2/AVX-512 PFB direct rotated-store FIR | DSP/performance owner | `PfbSimdTests`, `PfbAlgebraTests`, `PfbProductionFlowTests`, retained `PfbFirBenchmarks` reports | Enforced |
 | AVX2/AVX-512 FDC wrapped complex extraction | DSP/performance owner | `SimdTests`, `FdcOverlapSaveTests`, `SimdEngineTests`, retained `FdcExtractionBenchmarks` reports | Enforced |
-| `Auto`, FoldAware prototype and selected-bin PFB | Architecture owner | No accepted benchmark/signal profile yet | Deliberately unsupported |
+| Explicit FoldAware PFB prototype | DSP/performance owner | `PfbFoldAwareTests`, dual-mode `SignalValidationAcceptanceTests`, schema-v2 signal summary and retained `PfbPrototypeBenchmarks` reports | Enforced as explicit opt-in; Conservative remains default |
+| Selected-bin/direct-DFT PFB | Architecture/performance owner | `PfbSelectedBinDftTests`, retained `PfbSelectedBinBenchmarks` reports and schema-v2 stage profile | Guarded: internal prototype is not wired because measured crossover is shape-limited and FFTW is not dominant |
+| Channelizer strategy `Auto` | Architecture owner | No versioned comparative strategy profile yet | Deliberately unsupported |
 
 ## Reproducible verification
 

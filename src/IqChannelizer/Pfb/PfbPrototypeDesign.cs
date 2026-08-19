@@ -6,7 +6,8 @@ namespace IqChannelizer.Pfb;
 internal sealed record PfbPrototype(
     float[] Taps,
     RationalSampleOffset GroupDelayInputSamples,
-    AliasedResponseResult AliasedResponse)
+    AliasedResponseResult AliasedResponse,
+    PfbPrototypeDesignMode DesignMode)
 {
     public int TapsPerPhase(int fftSize) => Taps.Length / fftSize;
 }
@@ -23,14 +24,26 @@ internal static class PfbPrototypeDesign
     private const int DenseResponsePoints = 16_385;
     private const int FoldedResponsePoints = 1_025;
 
-    public static PfbPrototype Design(ChannelizerRequest request, int fftSize, int hopSize)
+    public static PfbPrototype Design(
+        ChannelizerRequest request,
+        int fftSize,
+        int hopSize,
+        PfbPrototypeDesignMode designMode = PfbPrototypeDesignMode.Conservative)
     {
         var requirements = Analyze(request, fftSize, hopSize);
+        var stopbandEdge = designMode switch
+        {
+            PfbPrototypeDesignMode.Conservative => requirements.StopbandEdgeHz,
+            PfbPrototypeDesignMode.FoldAware when hopSize > 1 =>
+                requirements.CoarseOutputSampleRateHz - requirements.PassbandEdgeHz,
+            PfbPrototypeDesignMode.FoldAware => requirements.StopbandEdgeHz,
+            _ => throw new ArgumentOutOfRangeException(nameof(designMode))
+        };
         var aliasBudgetDb = 20 * Math.Log10(Math.Max(1, hopSize - 1));
         var designed = KaiserLowPassDesigner.Design(new LowPassFilterSpec(
             request.InputSampleRateHz,
             requirements.PassbandEdgeHz,
-            requirements.StopbandEdgeHz,
+            stopbandEdge,
             requirements.PassbandRippleDb,
             requirements.StopbandAttenuationDb + aliasBudgetDb));
         var paddedLength = checked(((designed.Taps.Length + fftSize - 1) / fftSize) * fftSize);
@@ -52,7 +65,7 @@ internal static class PfbPrototypeDesign
                 $"PFB prototype achieves only {aliased.WorstAliasAttenuationDb:R} dB conservative folded attenuation.");
         }
 
-        return new PfbPrototype(taps, groupDelay, aliased);
+        return new PfbPrototype(taps, groupDelay, aliased, designMode);
     }
 
     public static PfbPrototypeRequirements Analyze(ChannelizerRequest request, int fftSize, int hopSize)

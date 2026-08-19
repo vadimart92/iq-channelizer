@@ -23,11 +23,13 @@ public sealed class SignalValidationAcceptanceTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(root.GetProperty("schemaVersion").GetInt32(), Is.EqualTo(1));
+            Assert.That(root.GetProperty("schemaVersion").GetInt32(), Is.EqualTo(2));
             Assert.That(root.GetProperty("status").GetString(), Is.EqualTo("passed"));
             Assert.That(root.GetProperty("reproducibility").GetProperty("seed").GetInt32(), Is.EqualTo(Seed));
             Assert.That(engines.GetProperty("fdc").GetProperty("aliasImagesSwept").GetInt32(), Is.EqualTo(7));
             Assert.That(engines.GetProperty("pfb").GetProperty("aliasImagesSwept").GetInt32(), Is.EqualTo(15));
+            Assert.That(engines.GetProperty("pfb").GetProperty("prototypeModesSwept").EnumerateArray()
+                .Select(value => value.GetString()), Is.EqualTo(new[] { "Conservative", "FoldAware" }));
             Assert.That(root.GetProperty("filters").GetProperty("decimationFactors").EnumerateArray()
                 .Select(value => value.GetInt32()), Is.EqualTo(new[] { 2, 4, 8 }));
         });
@@ -68,13 +70,14 @@ public sealed class SignalValidationAcceptanceTests
         }
     }
 
-    [Test]
-    public void PfbBlockerSweepCoversEveryFinalRateAliasImage()
+    [TestCase(PfbPrototypeDesignMode.Conservative)]
+    [TestCase(PfbPrototypeDesignMode.FoldAware)]
+    public void PfbBlockerSweepCoversEveryFinalRateAliasImage(PfbPrototypeDesignMode designMode)
     {
         const int fftSize = 8;
         const int hopSize = 2;
         const int frames = 8;
-        var request = PfbRequest(centerFrequencyHz: 0, fftSize, hopSize, frames);
+        var request = PfbRequest(centerFrequencyHz: 0, fftSize, hopSize, frames, designMode);
         var fine = PfbFineStageDesigner.Design(request.Channels[0], SampleRate / hopSize, frames);
         var totalDecimation = hopSize * fine.DecimationFactor;
         var blockerFrequencies = AliasImageFrequencies(totalDecimation);
@@ -104,7 +107,7 @@ public sealed class SignalValidationAcceptanceTests
             }
 
             Assert.That(Rms(actual!), Is.LessThan(0.0032),
-                $"seed={Seed}, strategy=Pfb, K={fftSize}, H={hopSize}, Dfine={fine.DecimationFactor}, blocker={blockerFrequency:R} Hz");
+                $"seed={Seed}, strategy=Pfb, mode={designMode}, K={fftSize}, H={hopSize}, Dfine={fine.DecimationFactor}, blocker={blockerFrequency:R} Hz");
         }
     }
 
@@ -181,7 +184,12 @@ public sealed class SignalValidationAcceptanceTests
         new InputBlockConstraints(128, 128),
         new ChannelizerImplementationHints(FdcDecimationFactor: decimation, Simd: SimdPreference.Scalar));
 
-    private static ChannelizerRequest PfbRequest(double centerFrequencyHz, int fftSize, int hopSize, int frames) => new(
+    private static ChannelizerRequest PfbRequest(
+        double centerFrequencyHz,
+        int fftSize,
+        int hopSize,
+        int frames,
+        PfbPrototypeDesignMode designMode = PfbPrototypeDesignMode.Conservative) => new(
         SampleRate,
         [new ChannelRequest(202, centerFrequencyHz, 20, 20, 50, 0.2)],
         ChannelizerStrategy.Pfb,
@@ -190,7 +198,8 @@ public sealed class SignalValidationAcceptanceTests
             PfbFftSize: fftSize,
             PfbHopSize: hopSize,
             PfbFramesPerBatch: frames,
-            Simd: SimdPreference.Scalar));
+            Simd: SimdPreference.Scalar,
+            PfbPrototypeDesign: designMode));
 
     private static IReadOnlyList<double> AliasImageFrequencies(int decimation)
     {

@@ -37,7 +37,11 @@ internal static class PfbPlanner
         {
             try
             {
-                var prototype = PfbPrototypeDesign.Design(request, candidate.FftSize, candidate.HopSize);
+                var prototype = PfbPrototypeDesign.Design(
+                    request,
+                    candidate.FftSize,
+                    candidate.HopSize,
+                    request.Hints?.PfbPrototypeDesign ?? PfbPrototypeDesignMode.Conservative);
                 var coarseRate = request.InputSampleRateHz / candidate.HopSize;
                 var fineStages = request.Channels
                     .Select(channel => PfbFineStageDesigner.Design(channel, coarseRate, candidate.FramesPerBatch))

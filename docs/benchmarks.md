@@ -5,6 +5,8 @@ The existing benchmark project uses BenchmarkDotNet 0.15.8 and contains these fa
 - `PrimitiveBenchmarks`: scalar FIR work, normalized per output sample;
 - `FftwBenchmarks`: single-precision forward transform execution;
 - `PfbFirBenchmarks`: scalar versus AVX2 and AVX-512 phase-parallel direct-store FIR kernels;
+- `PfbPrototypeBenchmarks`: Conservative versus explicit FoldAware end-to-end PFB processing;
+- `PfbSelectedBinBenchmarks`: FFTW+gather versus scalar/AVX2/AVX-512 direct-DFT crossover;
 - `FdcExtractionBenchmarks`: scalar versus AVX2 and AVX-512 complex-window extraction;
 - `ResidualRotatorBenchmarks`: measured scalar versus AVX2 residual rotation;
 - `EngineBenchmarks`: steady-state scalar, AVX2 and AVX-512 FDC/PFB processing for 1, 8, and 32 channels,
@@ -22,7 +24,8 @@ Use `--job Dry --filter "*"` only to prove that every generated harness builds a
 Dry measurements have one sample and are not performance evidence. A decision-grade run
 must retain the generated Markdown/CSV output together with the commit, CPU, OS, runtime,
 FFTW version, power policy, and exact command. Only such a stored comparative profile may
-feed a future strategy `Auto`, FoldAware, selected-bin, ISA, or realtime decision. The
+feed a future strategy `Auto`, automatic FoldAware selection, selected-bin production path,
+ISA, or realtime decision. The
 accepted AVX2/AVX-512 dispatch evidence is retained under `artifacts/benchmarks/results/` and summarized
 in `artifacts/benchmarks/latest-summary.md`.
 

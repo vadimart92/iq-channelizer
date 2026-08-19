@@ -1,11 +1,11 @@
 # Definition-of-Done acceptance report
 
 This report audits section 14 of [`implementation-plan.md`](../../implementation-plan.md)
-against the Conservative scalar/AVX2/AVX-512 milestone at commit `998d427` plus the current AVX-512
-changeset. It records capability status; it is not a redistributable-release approval
+against the Conservative/explicit FoldAware scalar/AVX2/AVX-512 milestone at commit `4363f84`
+plus the current Step 14 changeset. It records capability status; it is not a redistributable-release approval
 or a portable realtime claim.
 
-Verification date: **2026-08-19**. Release suite: **221 passed, 0 failed, 0 skipped**.
+Verification date: **2026-08-19**. Release suite: **229 passed, 0 failed, 0 skipped**.
 
 Status meanings:
 
@@ -32,7 +32,7 @@ Status meanings:
 | ISA dispatch is outside inner loops | Enforced | `SimdBackendResolver` resolves once at creation; forced unsupported AVX2/AVX-512 requests produce actionable errors |
 | FDC inverse normalization is explicit and amplitude-tested | Enforced | `FftwFdcEngine`, `FdcOverlapSaveTests` |
 | Filter validation includes folded alias response | Enforced | filter tests and `SignalValidationAcceptanceTests` |
-| Conservative and FoldAware designs can be compared safely | Deferred | FoldAware remains disabled pending accepted blocker/correctness data |
+| Conservative and FoldAware designs can be compared safely | Enforced | explicit `PfbPrototypeDesignMode`, `PfbFoldAwareTests`, dual-mode 15-image blocker sweeps and retained end-to-end BDN comparison; Conservative remains default |
 | Exact history/chunk contracts are enforced | Enforced | `StreamingFlowTests.ProcessEnforcesExactLengthAndContinuity` |
 | Hot output API is only `Write(int, ReadOnlySpan<ComplexF>)` | Enforced | `IChannelOutputSink` |
 | Channel IDs stay unique, opaque, and unremapped | Enforced | validation and routing tests |
@@ -44,7 +44,7 @@ Status meanings:
 | Steady-state processing has no managed allocations | Enforced | FDC/PFB/diagnostics tests and retained BDN results |
 | FFTW planning never occurs in `Process` | Enforced | FFTW plan-cache/runtime design and execution tests |
 | Both engines match the independent DDC | Enforced | FDC/PFB signal acceptance fixtures |
-| Benchmarks cover primitives, FFTW, FDC, PFB, and SIMD backends | Enforced | retained 18-case scalar/AVX2/AVX-512 engine BDN plus PFB FIR, FDC extraction and rotator comparisons |
+| Benchmarks cover primitives, FFTW, FDC, PFB, SIMD backends and gated Step 14 candidates | Enforced | retained 18-case scalar/AVX2/AVX-512 engine BDN plus PFB FIR, FDC extraction, rotator, FoldAware end-to-end and selected-bin crossover comparisons |
 | Target 100 MS/s profile has a recorded realtime result | Deferred | Current stored profile is configuration-specific and explicitly makes no 100 MS/s realtime claim |
 | FFTW licensing/distribution is documented | Enforced | managed library is MIT; FFTW DLL is separately licensed and excluded from NuGet |
 | README has a minimal request/process/output example | Enforced | self-contained example in [`README.md`](../../README.md) |
@@ -52,14 +52,17 @@ Status meanings:
 
 ## Release blockers and next gates
 
-The Conservative scalar/AVX2/AVX-512 implementation is correctness- and benchmark-audited, but the
+The Conservative/explicit FoldAware scalar/AVX2/AVX-512 implementation is correctness- and benchmark-audited, but the
 full project Definition of Done is not complete. The remaining gates are:
 
-1. accepted comparative correctness/performance data before FoldAware or selected-bin work;
-2. a target 100 MS/s end-to-end profile before any realtime claim;
-3. a versioned strategy-comparison profile before enabling channelizer strategy `Auto`; and
-4. clean-environment validation that the inspected managed-only NuGet works with an
+1. a target 100 MS/s end-to-end profile before any realtime claim;
+2. a versioned strategy-comparison profile before enabling channelizer strategy `Auto`; and
+3. clean-environment validation that the inspected managed-only NuGet works with an
    independently supplied compatible runtime.
+
+Selected-bin/direct-DFT is intentionally not a release blocker: its stored crossover is
+shape-limited, and the representative stage profile attributes only about 9.1% of PFB time
+to FFTW. The prototype therefore remains internal and unwired.
 
 The detailed fixture map and reproducible commands are in
 [`manifest.md`](manifest.md). Stored scalar signal and scalar/AVX2/AVX-512 performance summaries are under

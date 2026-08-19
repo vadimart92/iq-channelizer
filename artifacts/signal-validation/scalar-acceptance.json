@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "status": "passed",
   "generatedOn": "2026-08-19",
   "suite": "SignalValidationAcceptanceTests",
@@ -26,6 +26,10 @@
       "fineDecimationFactor": 8,
       "totalDecimationFactor": 16,
       "aliasImagesSwept": 15,
+      "prototypeModesSwept": [
+        "Conservative",
+        "FoldAware"
+      ],
       "halfBinResidualsHz": [
         -64,
         64
@@ -39,6 +43,7 @@
       8
     ],
     "standaloneResponseChecked": true,
-    "conservativeFoldedResponseChecked": true
+    "conservativeFoldedResponseChecked": true,
+    "foldAwareFoldedResponseChecked": true
   }
 }

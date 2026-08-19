@@ -64,6 +64,19 @@ BDN advantage. Backend acceptance therefore uses the full BDN comparison plus co
 not this single instrumented profile in isolation. The complete counters, latency distribution,
 working set and stage ticks are in [stage-profile.json](stage-profile.json).
 
+## Step 14 experiments
+
+FoldAware is an explicit PFB prototype-design hint; deterministic planning still defaults to
+Conservative until a versioned planner profile exists. On the recorded eight-channel `K=64`,
+`H=32`, AVX-512 shape, FoldAware reduced end-to-end processing from 12.281 to 7.232 ns/input
+sample (41.1%) with zero managed allocation. Both modes pass the folded evaluator, passband test,
+and all 15 final-rate blocker images.
+
+The selected-bin direct-DFT prototype is correctness-tested but remains unwired. It beats
+FFTW+gather for `Q=1` at `K=64/512` and for `K=512,Q=4`, but loses at `K=64,Q>=4` and
+`K=512,Q=8`. Moreover, FFTW accounts for only about 9% of the current representative AVX-512
+PFB stage profile. This does not justify another production path or an `Auto` rule yet.
+
 ## Retained reports
 
 - [Engine Markdown](results/IqChannelizer.Benchmarks.EngineBenchmarks-report-github.md) / [CSV](results/IqChannelizer.Benchmarks.EngineBenchmarks-report.csv)
@@ -73,4 +86,6 @@ working set and stage ticks are in [stage-profile.json](stage-profile.json).
 - [AVX-512 engine Markdown](results/IqChannelizer.Benchmarks.EngineBenchmarks-Avx512-report-github.md) / [CSV](results/IqChannelizer.Benchmarks.EngineBenchmarks-Avx512-report.csv)
 - [AVX-512 PFB FIR Markdown](results/IqChannelizer.Benchmarks.PfbFirBenchmarks-Avx512-report-github.md) / [CSV](results/IqChannelizer.Benchmarks.PfbFirBenchmarks-Avx512-report.csv)
 - [AVX-512 FDC extraction Markdown](results/IqChannelizer.Benchmarks.FdcExtractionBenchmarks-Avx512-report-github.md) / [CSV](results/IqChannelizer.Benchmarks.FdcExtractionBenchmarks-Avx512-report.csv)
+- [FoldAware comparison Markdown](results/IqChannelizer.Benchmarks.PfbPrototypeBenchmarks-report-github.md) / [CSV](results/IqChannelizer.Benchmarks.PfbPrototypeBenchmarks-report.csv)
+- [Selected-bin crossover Markdown](results/IqChannelizer.Benchmarks.PfbSelectedBinBenchmarks-report-github.md) / [CSV](results/IqChannelizer.Benchmarks.PfbSelectedBinBenchmarks-report.csv)
 - Existing FFTW, planning and scalar FIR reports remain retained beside these files.

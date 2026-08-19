@@ -21,6 +21,11 @@ collection cast, and they do not track later mutations to the request's channel 
 Changing a copied record with a C# `with` expression creates a new record; it does not
 reconfigure the engine.
 
+PFB prototype design defaults to `PfbPrototypeDesignMode.Conservative`. Callers may set
+`ChannelizerImplementationHints.PfbPrototypeDesign` to `FoldAware` before creation; the
+resolved plan records the chosen mode. FoldAware is an explicit, validated choice and is
+not selected automatically without a versioned planner profile.
+
 ## Process contract
 
 For each call, the application supplies exactly `InputRequirements.InputSize` samples.

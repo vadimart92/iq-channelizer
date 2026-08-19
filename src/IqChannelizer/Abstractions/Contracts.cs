@@ -22,6 +22,12 @@ public enum DiagnosticsMode
     StageTiming
 }
 
+public enum PfbPrototypeDesignMode
+{
+    Conservative,
+    FoldAware
+}
+
 public sealed record ChannelizerRequest(
     double InputSampleRateHz,
     IReadOnlyList<ChannelRequest> Channels,
@@ -39,7 +45,8 @@ public sealed record ChannelizerImplementationHints(
     int? PfbHopSize = null,
     int? PfbFramesPerBatch = null,
     SimdPreference Simd = SimdPreference.Auto,
-    DiagnosticsMode Diagnostics = DiagnosticsMode.Disabled);
+    DiagnosticsMode Diagnostics = DiagnosticsMode.Disabled,
+    PfbPrototypeDesignMode PfbPrototypeDesign = PfbPrototypeDesignMode.Conservative);
 
 public sealed record ChannelRequest(
     int ChannelId,

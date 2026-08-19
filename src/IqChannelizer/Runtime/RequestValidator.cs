@@ -94,6 +94,11 @@ internal static class RequestValidator
             throw new ArgumentOutOfRangeException(nameof(request), "Unknown diagnostics mode.");
         }
 
+        if (!Enum.IsDefined(hints.PfbPrototypeDesign))
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), "Unknown PFB prototype design mode.");
+        }
+
         if (hints.FdcDecimationFactor is { } decimation &&
             (decimation <= 0 || (decimation & (decimation - 1)) != 0))
         {

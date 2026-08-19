@@ -158,7 +158,8 @@ public static class ChannelizerFactory
                 checked(hopSize * fine.DecimationFactor),
                 firstOutputOffset: checked(hopSize - 1 - ToIntegralSamples(totalDelay)),
                 pfbGroupId: 0, pfbFftSize: fftSize, pfbHopSize: hopSize,
-                prototypeFilterId: $"KaiserPfbK{fftSize}P{prototype.TapsPerPhase(fftSize)}",
+                prototypeFilterId:
+                    $"Kaiser{prototype.DesignMode}PfbK{fftSize}P{prototype.TapsPerPhase(fftSize)}",
                 groupDelay: totalDelay,
                 fineDecimationFactor: fine.DecimationFactor,
                 fineFilterId: fine.FilterId,
@@ -210,7 +211,7 @@ public static class ChannelizerFactory
             OversamplingRatio = new RationalSampleOffset(fftSize, hopSize),
             PfbPhaseShiftMode = "PreFftCircularShift",
             TapsPerPhase = prototype.TapsPerPhase(fftSize),
-            FilterDesignMode = "KaiserConservative"
+            FilterDesignMode = $"Kaiser{prototype.DesignMode}"
         };
         return new FftwPfbEngine(
             plan,

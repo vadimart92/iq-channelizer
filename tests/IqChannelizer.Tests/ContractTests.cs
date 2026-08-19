@@ -83,6 +83,19 @@ public sealed class ContractTests
         Assert.That(() => ChannelizerFactory.Create(request), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
+    [Test]
+    public void UnknownPfbPrototypeDesignModeIsRejected()
+    {
+        var request = Request(ChannelizerStrategy.Pfb, [Channel(1, 0)]) with
+        {
+            Hints = new ChannelizerImplementationHints(
+                Simd: SimdPreference.Scalar,
+                PfbPrototypeDesign: (PfbPrototypeDesignMode)999)
+        };
+
+        Assert.That(() => ChannelizerFactory.Create(request), Throws.TypeOf<ArgumentOutOfRangeException>());
+    }
+
     [TestCase(double.NaN, 80, 0.1, null, null)]
     [TestCase(20, double.NaN, 0.1, null, null)]
     [TestCase(20, 0, 0.1, null, null)]
