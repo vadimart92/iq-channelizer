@@ -60,8 +60,10 @@ constraint, or implementation hint:
 5. dispose the old engine after no callback can still use it.
 
 There is intentionally no in-place reconfiguration API: it would mix FFTW planning and
-buffer replacement with the streaming contract. `Auto` is also intentionally rejected
-until a versioned, comparative benchmark profile can explain the selected strategy.
+buffer replacement with the streaming contract. `Auto` resolves only when the current
+environment and exact request family match a versioned comparative profile. The resolved
+plan records `BenchmarkProfileKey` and a human-readable decision warning; unmatched requests
+are rejected and must select `Fdc` or `Pfb` explicitly.
 
 ## Failures and diagnostics
 

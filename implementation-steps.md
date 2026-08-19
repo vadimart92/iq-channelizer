@@ -17,18 +17,18 @@
 ## Остання перевірка
 
 - Дата: **2026-08-19**
-- Verified implementation base commit: `3b96ba7` + **current managed-only package changeset**
-- Release tests: **229 passed, 0 failed, 0 skipped**
+- Verified implementation base commit: `6aaa8ae` + **current profile-backed Auto changeset**
+- Release tests: **235 passed, 0 failed, 0 skipped**
 - Companion tool: **27/27 Vitest**, production Vite build successful
 - Benchmarks: retained **18-case scalar/AVX2/AVX-512 engine comparison**, SIMD kernel comparisons, schema-v2 allocation/latency/stage profile та Step 14 FoldAware/selected-bin comparison
-- Найближчий implementation step: **сформувати versioned equal-spec comparison profile для strategy `Auto`; окремо лишається 100 MS/s target evidence**
+- Найближчий implementation step: **записати target 100 MS/s end-to-end profile; portable realtime claim до цього заборонений**
 - Release packaging: **managed-only NuGet verified; FFTW не входить до package і постачається consumer-ом окремо**
 
 ## Зведена таблиця
 
 | Крок | Статус | Evidence / примітка |
 | --- | --- | --- |
-| 0. Baseline та acceptance map | виконано | [`docs/acceptance/manifest.md`](docs/acceptance/manifest.md) містить owner-role/fixture mapping і reproducible commands; [`docs/acceptance/report.md`](docs/acceptance/report.md) аудіює Definition of Done; 229/229 Release tests |
+| 0. Baseline та acceptance map | виконано | [`docs/acceptance/manifest.md`](docs/acceptance/manifest.md) містить owner-role/fixture mapping і reproducible commands; [`docs/acceptance/report.md`](docs/acceptance/report.md) аудіює Definition of Done; 235/235 Release tests |
 | 1. Contracts, validation, timing | виконано | Commit `ced2747`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
 | 2. FFTW runtime | виконано | Commit `3eb2c62`; повторно перевірено на `5b7492d` + Step 3 working tree, 90/90 tests |
 | 3. Scalar filter-design foundation | виконано | Commit history до `5bae632`; повторно перевірено зі Step 5 working tree, 117/117 tests |
@@ -43,7 +43,7 @@
 | 12. BenchmarkDotNet suite | виконано | Commit `23b05b0`; 12 statistical cases, retained raw reports і integration stage/working-set profile |
 | 13. SIMD gate | виконано | Creation-time scalar/AVX2/AVX-512 dispatch, 64-byte buffers, PFB direct-store FIR і FDC extraction; retained 18-case engine і kernel comparisons |
 | 14. FoldAware/selected-bin experiments | виконано | Explicit FoldAware пройшов folded/blocker correctness і measured end-to-end comparison; selected-bin direct DFT має stored crossover evidence та лишається unwired |
-| 15. Facade/docs/Auto | частково | Facade/docs і managed-only clean-consumer package виконано; strategy `Auto` та 100 MS/s claim лишаються за profile gates |
+| 15. Facade/docs/Auto | частково | Facade/docs, managed-only package та exact profile-backed strategy `Auto` виконано; 100 MS/s claim лишається за target profile gate |
 
 ## Детальні кроки
 
@@ -285,7 +285,7 @@
 
 ### Крок 15. Завершити facade, docs і Auto останнім
 
-**Статус: частково (facade/docs, hardening і managed-only package scope виконано).** Base commit `3b96ba7` + current package changeset; 229/229 Release tests.
+**Статус: частково (facade/docs, hardening, managed-only package і exact profile-backed Auto виконано).** Base commit `6aaa8ae` + current Auto changeset; 235/235 Release tests.
 
 - Завершити public plan inspection, diagnostics, reset/reconfiguration docs і minimal production example.
 - Перевірити Definition of Done і створити acceptance report.
@@ -296,6 +296,8 @@
 
 **Evidence:** `ChannelizerFactory.cs` повертає read-only snapshots для channels і warnings; `ContractTests.ResolvedPlanCollectionsAreImmutableSnapshots` перевіряє обидві strategies та відв’язування від mutable request list. README містить самодостатній request/plan/process/sink example. [`docs/facade.md`](docs/facade.md) фіксує plan inspection, span lifetime, serialized streaming і різницю між `Reset` та створенням нового engine. [`docs/acceptance/report.md`](docs/acceptance/report.md) аудіює кожен пункт Definition of Done і явно відділяє enforced, guarded, deferred та externally blocked gates.
 
-**Design decisions:** in-place reconfiguration не додається: зміна channels/rates/strategy/hints потребує створення та перевірки нового engine поза hot path. SIMD `Auto` є лише hardware/backend selection між accepted scalar/AVX2/AVX-512 paths; channelizer strategy `Auto` не ввімкнена без versioned comparative strategy profile. IqChannelizer має MIT license; FFTW 3.3.5 використовується для локальної відтворюваності, але DLL/header не входять до NuGet. `build/verify-package.ps1` інспектує package, використовує isolated package cache, збирає clean consumer і додає FFTW runtime лише після build.
+**Design decisions:** in-place reconfiguration не додається: зміна channels/rates/strategy/hints потребує створення та перевірки нового engine поза hot path. SIMD `Auto` є hardware/backend selection між accepted scalar/AVX2/AVX-512 paths; channelizer strategy `Auto` застосовує лише exact versioned profile match і не extrapolate-ить невідомі shapes. IqChannelizer має MIT license; FFTW 3.3.5 використовується для локальної відтворюваності, але DLL/header не входять до NuGet. `build/verify-package.ps1` інспектує package, використовує isolated package cache, збирає clean consumer і додає FFTW runtime лише після build.
 
-**Done ще не підтверджено повністю:** лишилися target 100 MS/s realtime evidence та channelizer strategy `Auto` profile. Clean-environment managed-only consumer validation, FoldAware/selected-bin comparisons та AVX-512 measured decision виконано. SigMF generator ведеться окремо й не є gate цього проєкту.
+**Auto evidence:** `artifacts/benchmarks/strategy-profile-v1.json` фіксує same-request Q=1/8/32 scalar/AVX2/AVX-512 comparison: FDC виграв усі дев'ять rows щонайменше у 2.5x. `StrategyProfileSelector` вимагає exact CPU/OS/runtime/FFTW і request-family match, вибирає FDC та записує profile key/explanation; невідомі cases кидають actionable `NotSupportedException`. `StrategyProfileTests` перевіряє schema/runtime-key consistency, margin, matching і rejection.
+
+**Done ще не підтверджено повністю:** лишилося target 100 MS/s realtime evidence. Clean-environment managed-only consumer validation, profile-backed channelizer strategy `Auto`, FoldAware/selected-bin comparisons та AVX-512 measured decision виконано. SigMF generator ведеться окремо й не є gate цього проєкту.

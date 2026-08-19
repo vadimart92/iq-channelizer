@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "profileKey": "equal-spec-1m-10k-q1-8-32-v1",
+  "status": "accepted",
+  "sourceReport": "results/IqChannelizer.Benchmarks.EngineBenchmarks-Avx512-report-github.md",
+  "environment": {
+    "operatingSystem": "Windows x64",
+    "runtimeMajorVersion": 10,
+    "processorIdentifier": "AMD64 Family 25 Model 120 Stepping 0, AuthenticAMD",
+    "fftwVersionContains": "3.3.5"
+  },
+  "requestFamily": {
+    "inputSampleRateHz": 1000000,
+    "channelCounts": [1, 8, 32],
+    "centerSpacingHz": 15625,
+    "passbandWidthHz": 10000,
+    "transitionWidthHz": 10000,
+    "stopbandAttenuationDb": 60,
+    "passbandRippleDb": 0.2,
+    "chunkSize": 4096,
+    "prototypeDesign": "Conservative"
+  },
+  "nanosecondsPerInputSample": [
+    { "channelCount": 1, "backend": "Scalar", "fdc": 2.691, "pfb": 21.943 },
+    { "channelCount": 1, "backend": "Avx2", "fdc": 2.682, "pfb": 9.953 },
+    { "channelCount": 1, "backend": "Avx512", "fdc": 2.724, "pfb": 9.138 },
+    { "channelCount": 8, "backend": "Scalar", "fdc": 4.450, "pfb": 25.659 },
+    { "channelCount": 8, "backend": "Avx2", "fdc": 4.496, "pfb": 12.758 },
+    { "channelCount": 8, "backend": "Avx512", "fdc": 4.474, "pfb": 11.625 },
+    { "channelCount": 32, "backend": "Scalar", "fdc": 10.410, "pfb": 39.122 },
+    { "channelCount": 32, "backend": "Avx2", "fdc": 9.315, "pfb": 24.382 },
+    { "channelCount": 32, "backend": "Avx512", "fdc": 9.373, "pfb": 23.952 }
+  ],
+  "decision": {
+    "strategy": "Fdc",
+    "minimumMeasuredSpeedup": 2.5,
+    "outsideProfileBehavior": "NotSupportedException"
+  }
+}

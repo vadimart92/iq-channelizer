@@ -28,7 +28,7 @@ remains under ignored `TestResults/` and `BenchmarkDotNet.Artifacts/` directorie
 | AVX2/AVX-512 FDC wrapped complex extraction | DSP/performance owner | `SimdTests`, `FdcOverlapSaveTests`, `SimdEngineTests`, retained `FdcExtractionBenchmarks` reports | Enforced |
 | Explicit FoldAware PFB prototype | DSP/performance owner | `PfbFoldAwareTests`, dual-mode `SignalValidationAcceptanceTests`, schema-v2 signal summary and retained `PfbPrototypeBenchmarks` reports | Enforced as explicit opt-in; Conservative remains default |
 | Selected-bin/direct-DFT PFB | Architecture/performance owner | `PfbSelectedBinDftTests`, retained `PfbSelectedBinBenchmarks` reports and schema-v2 stage profile | Guarded: internal prototype is not wired because measured crossover is shape-limited and FFTW is not dominant |
-| Channelizer strategy `Auto` | Architecture owner | No versioned comparative strategy profile yet | Deliberately unsupported |
+| Channelizer strategy `Auto` | Architecture/performance owner | `StrategyProfileTests`, `artifacts/benchmarks/strategy-profile-v1.json`, retained equal-spec engine report | Enforced for exact profile matches; unmatched environments/shapes are guarded |
 
 ## Reproducible verification
 

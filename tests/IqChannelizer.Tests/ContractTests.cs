@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using IqChannelizer.Abstractions;
+using IqChannelizer.Runtime;
 
 namespace IqChannelizer.Tests;
 
@@ -29,9 +30,11 @@ public sealed class ContractTests
     }
 
     [Test]
-    public void AutoIsExplicitlyUnsupported()
+    public void AutoWithoutMatchingProfileIsRejected()
     {
-        Assert.That(() => ChannelizerFactory.Create(Request(ChannelizerStrategy.Auto, [Channel(1, 0)])), Throws.TypeOf<NotSupportedException>());
+        Assert.That(
+            () => ChannelizerFactory.Create(Request(ChannelizerStrategy.Auto, [Channel(1, 0)])),
+            Throws.TypeOf<NotSupportedException>().With.Message.Contains(StrategyProfileSelector.ProfileKey));
     }
 
     [Test]

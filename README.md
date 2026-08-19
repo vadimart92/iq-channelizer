@@ -2,7 +2,7 @@
 
 Streaming complex-IQ channelization with interchangeable FDC and generalized PFB strategies.
 
-The current milestone provides the public request/plan/streaming contracts, deterministic planning, a multi-decimation FFTW overlap-save FDC with one shared forward FFT, grouped short inverse transforms and validated Kaiser anti-alias filters, plus a generalized batched `K/H` PFB with Conservative and explicit FoldAware `P > 1` Kaiser prototypes, absolute frame correction, unique-bin fan-out and per-channel power-of-two fine decimation. The PFB planner enumerates feasible `K/H/FramesPerBatch` shapes, validates exact filters, and can select non-2× oversampling. Scalar reference transforms, conservative response/folding validation, and BenchmarkDotNet entry points are included. SIMD is resolved once at engine creation: `Auto` uses measured AVX2/FMA kernels for FDC and AVX-512F for PFB when those ISAs are available, then falls back through AVX2 to scalar. Every backend may also be forced explicitly. The channelizer strategy `Auto`, production selected-bin path, and realtime claims remain behind separate data gates.
+The current milestone provides the public request/plan/streaming contracts, deterministic planning, a multi-decimation FFTW overlap-save FDC with one shared forward FFT, grouped short inverse transforms and validated Kaiser anti-alias filters, plus a generalized batched `K/H` PFB with Conservative and explicit FoldAware `P > 1` Kaiser prototypes, absolute frame correction, unique-bin fan-out and per-channel power-of-two fine decimation. The PFB planner enumerates feasible `K/H/FramesPerBatch` shapes, validates exact filters, and can select non-2× oversampling. Scalar reference transforms, conservative response/folding validation, and BenchmarkDotNet entry points are included. SIMD is resolved once at engine creation: `Auto` uses measured AVX2/FMA kernels for FDC and AVX-512F for PFB when those ISAs are available, then falls back through AVX2 to scalar. Every backend may also be forced explicitly. Channelizer strategy `Auto` is available only for an exact versioned benchmark-profile match and rejects unknown environments/shapes; the production selected-bin path and realtime claims remain behind separate data gates.
 
 For source-checkout builds and tests, the pinned Windows x64 FFTW binary is copied beside the managed assembly automatically. It is intentionally excluded from the managed-only NuGet package: NuGet consumers must supply a compatible native FFTW runtime beside the application or managed assembly themselves. FFTW plans and aligned native buffers are created once with the engine and disposed with it; no planning occurs in `Process`.
 
@@ -58,6 +58,12 @@ PFB prototype design defaults to `PfbPrototypeDesignMode.Conservative`. A measur
 while retaining folded-response and blocker-sweep validation. It is not selected automatically
 until a versioned planner profile is available. The selected-bin/direct-DFT prototype remains
 benchmark-only because its measured crossover does not justify another production path yet.
+
+`ChannelizerStrategy.Auto` never applies an unmeasured heuristic. The accepted
+`equal-spec-1m-10k-q1-8-32-v1` profile covers its recorded Windows x64 CPU/runtime/FFTW
+environment and exact 1 MS/s, 4096-sample, 1/8/32-channel request family. A match resolves
+to FDC and records the profile key plus explanation in the plan; every other request throws
+an actionable `NotSupportedException` and must force `Fdc` or `Pfb` explicitly.
 
 The fine stage selects a per-channel power-of-two factor that divides the frame batch. A real per-channel FIR is retained even when that factor is one, unless the requested stop edge is at or beyond the coarse Nyquist boundary. Channels sharing a coarse bin reuse one gathered stream before independent residual rotation, filtering, and decimation; FIR startup state is represented by the resolved group-delay metadata.
 

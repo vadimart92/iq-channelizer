@@ -77,6 +77,14 @@ FFTW+gather for `Q=1` at `K=64/512` and for `K=512,Q=4`, but loses at `K=64,Q>=4
 `K=512,Q=8`. Moreover, FFTW accounts for only about 9% of the current representative AVX-512
 PFB stage profile. This does not justify another production path or an `Auto` rule yet.
 
+## Versioned strategy profile
+
+`strategy-profile-v1.json` captures the equal-spec 1 MS/s, 4096-sample, Q=1/8/32 engine
+matrix from the retained AVX-512 comparison. FDC won every scalar/AVX2/AVX-512 row by at
+least 2.5x. Channelizer strategy `Auto` therefore selects FDC only when the recorded CPU,
+Windows x64, .NET 10, FFTW 3.3.5, and exact request family all match; outside that scope it
+throws instead of extrapolating.
+
 ## Retained reports
 
 - [Engine Markdown](results/IqChannelizer.Benchmarks.EngineBenchmarks-report-github.md) / [CSV](results/IqChannelizer.Benchmarks.EngineBenchmarks-report.csv)

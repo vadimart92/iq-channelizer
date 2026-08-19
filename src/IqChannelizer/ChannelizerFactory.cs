@@ -18,16 +18,23 @@ public static class ChannelizerFactory
             throw new PlatformNotSupportedException("ComplexF must contain exactly two adjacent 32-bit floats.");
         }
 
-        return request.Strategy switch
+        var selection = request.Strategy == ChannelizerStrategy.Auto
+            ? StrategyProfileSelector.Resolve(request)
+            : null;
+        var resolvedRequest = selection is null
+            ? request
+            : request with { Strategy = selection.Strategy };
+        return resolvedRequest.Strategy switch
         {
-            ChannelizerStrategy.Fdc => CreateFdc(request),
-            ChannelizerStrategy.Pfb => CreatePfb(request),
-            ChannelizerStrategy.Auto => throw new NotSupportedException("Auto strategy requires benchmark profiles and is not implemented yet."),
+            ChannelizerStrategy.Fdc => CreateFdc(resolvedRequest, selection),
+            ChannelizerStrategy.Pfb => CreatePfb(resolvedRequest, selection),
             _ => throw new ArgumentOutOfRangeException(nameof(request))
         };
     }
 
-    private static IStreamingChannelizer CreateFdc(ChannelizerRequest request)
+    private static IStreamingChannelizer CreateFdc(
+        ChannelizerRequest request,
+        StrategySelection? strategySelection = null)
     {
         // End-to-end evidence favors AVX2 slightly for FDC even though the isolated AVX-512 extraction kernel is faster.
         var simdBackend = SimdBackendResolver.Resolve(
@@ -76,9 +83,11 @@ public static class ChannelizerFactory
             Warnings = Array.AsReadOnly(channels.Select(channel => channel.Warning)
                 .Where(warning => warning is not null)
                 .Select(warning => warning!)
+                .Concat(strategySelection is null ? [] : [strategySelection.Explanation])
                 .ToArray()),
             FftSize = transformLength,
-            FilterDesignMode = "KaiserConservativeOverlapSave"
+            FilterDesignMode = "KaiserConservativeOverlapSave",
+            BenchmarkProfileKey = strategySelection?.ProfileKey
         };
         return new FftwFdcEngine(plan, designs, simdBackend, request.Hints?.Diagnostics ?? DiagnosticsMode.Disabled);
     }
@@ -117,7 +126,9 @@ public static class ChannelizerFactory
         return Array.AsReadOnly(result);
     }
 
-    private static IStreamingChannelizer CreatePfb(ChannelizerRequest request)
+    private static IStreamingChannelizer CreatePfb(
+        ChannelizerRequest request,
+        StrategySelection? strategySelection = null)
     {
         // The AVX-512 PFB FIR advantage survives the full engine benchmark.
         var simdBackend = SimdBackendResolver.Resolve(
@@ -204,6 +215,7 @@ public static class ChannelizerFactory
                 .Concat(channels.Select(channel => channel.Warning)
                     .Where(warning => warning is not null)
                     .Select(warning => warning!))
+                .Concat(strategySelection is null ? [] : [strategySelection.Explanation])
                 .ToArray()),
             FftSize = fftSize,
             HopSize = hopSize,
@@ -211,7 +223,8 @@ public static class ChannelizerFactory
             OversamplingRatio = new RationalSampleOffset(fftSize, hopSize),
             PfbPhaseShiftMode = "PreFftCircularShift",
             TapsPerPhase = prototype.TapsPerPhase(fftSize),
-            FilterDesignMode = $"Kaiser{prototype.DesignMode}"
+            FilterDesignMode = $"Kaiser{prototype.DesignMode}",
+            BenchmarkProfileKey = strategySelection?.ProfileKey
         };
         return new FftwPfbEngine(
             plan,

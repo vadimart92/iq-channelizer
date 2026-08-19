@@ -29,6 +29,10 @@ ISA, or realtime decision. The
 accepted AVX2/AVX-512 dispatch evidence is retained under `artifacts/benchmarks/results/` and summarized
 in `artifacts/benchmarks/latest-summary.md`.
 
+The only accepted channelizer-strategy profile is
+`artifacts/benchmarks/strategy-profile-v1.json`. Runtime `Auto` requires an exact match to
+its environment and request-family fields; the profile is not a general cost model.
+
 For an allocation and latency integration profile with diagnostics-based stage totals:
 
 ```powershell
