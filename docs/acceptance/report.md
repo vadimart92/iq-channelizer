@@ -46,7 +46,7 @@ Status meanings:
 | Both engines match the independent DDC | Enforced | FDC/PFB signal acceptance fixtures |
 | Benchmarks cover primitives, FFTW, FDC, PFB, SIMD backends and gated Step 14 candidates | Enforced | retained 18-case scalar/AVX2/AVX-512 engine BDN plus PFB FIR, FDC extraction, rotator, FoldAware end-to-end and selected-bin crossover comparisons |
 | Target 100 MS/s profile has a recorded realtime result | Deferred | Current stored profile is configuration-specific and explicitly makes no 100 MS/s realtime claim |
-| FFTW licensing/distribution is documented | Enforced | managed library is MIT; FFTW DLL is separately licensed and excluded from NuGet |
+| FFTW licensing/distribution is documented | Enforced | managed library is MIT; FFTW DLL is separately licensed and excluded from NuGet; isolated package consumer passes with a separately supplied runtime |
 | README has a minimal request/process/output example | Enforced | self-contained example in [`README.md`](../../README.md) |
 | Every `Auto` decision is backed by a stored profile | Guarded | `Auto` makes no decisions and throws until a versioned comparative profile exists |
 
@@ -55,10 +55,8 @@ Status meanings:
 The Conservative/explicit FoldAware scalar/AVX2/AVX-512 implementation is correctness- and benchmark-audited, but the
 full project Definition of Done is not complete. The remaining gates are:
 
-1. a target 100 MS/s end-to-end profile before any realtime claim;
-2. a versioned strategy-comparison profile before enabling channelizer strategy `Auto`; and
-3. clean-environment validation that the inspected managed-only NuGet works with an
-   independently supplied compatible runtime.
+1. a target 100 MS/s end-to-end profile before any realtime claim; and
+2. a versioned strategy-comparison profile before enabling channelizer strategy `Auto`.
 
 Selected-bin/direct-DFT is intentionally not a release blocker: its stored crossover is
 shape-limited, and the representative stage profile attributes only about 9.1% of PFB time

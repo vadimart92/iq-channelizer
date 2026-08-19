@@ -2641,7 +2641,7 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 
 ## 17. Поточний стан і execution checklist для sub-агента
 
-Цей розділ є аудитом repository станом на **2026-08-19**, перевіреним на base commit `4363f84` + current Step 14 changeset. Він не змінює вимоги розділів 1–16. Операційна черга винесена в [`implementation-steps.md`](implementation-steps.md); якщо tracker конфліктує з математичним або API contract цього документа, пріоритет мають розділи 1–16.
+Цей розділ є аудитом repository станом на **2026-08-19**, перевіреним на base commit `3b96ba7` + current managed-only package changeset. Він не змінює вимоги розділів 1–16. Операційна черга винесена в [`implementation-steps.md`](implementation-steps.md); якщо tracker конфліктує з математичним або API contract цього документа, пріоритет мають розділи 1–16.
 
 ### 17.1. Звірка поточної реалізації з планом
 
@@ -2671,7 +2671,7 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 | Phase 13: Auto planner | відкладено | `Auto` явно throws `NotSupportedException` | Реалізувати лише після comparative benchmark profiles |
 | Signal tests | готово (Conservative/FoldAware scalar/AVX2/AVX-512 scope) | 229 unit/integration tests: independent-DDC checks, Conservative/FoldAware PFB blocker sweeps, FDC alias images, worst residuals, partition invariance, SIMD random/tail/misalignment/large-origin and end-to-end equivalence, Dfine=1 blocker, Nyquist wrap, sink fault/reset і adversarial response-grid coverage | Немає для поточного correctness scope |
 | Benchmarks | готово (scalar/AVX2/AVX-512 + Step 14 experiments) | BenchmarkDotNet 0.15.8; retained 18-case engine comparison, SIMD kernel comparisons, FoldAware end-to-end та selected-bin crossover CSV/Markdown, schema-v2 working-set/stage profile | target 100 MS/s realtime result відкладений |
-| Diagnostics/docs | частково | Allocation-free counters/stage timing, README, facade guide, ADR, acceptance manifest/report, benchmark guide, versioned backend string, FFTW provenance/licensing і explicit no-package release policy | Фінальне FFTW license/distribution рішення належить release owner |
+| Diagnostics/docs/package | готово для managed-only scope | Allocation-free counters/stage timing, README, facade guide, ADR, acceptance manifest/report, benchmark guide, versioned backend string, FFTW provenance/licensing, packable managed-only NuGet і isolated clean-consumer verification | FFTW redistribution не входить до package scope; consumer постачає runtime окремо |
 
 Поточні важливі обмеження, які не можна помилково вважати production behavior:
 
@@ -2704,4 +2704,4 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 
 ### 17.4. Найближчий рекомендований інкремент
 
-Кроки 0–14 та ungated facade/docs частина Кроку 15 перевірені для Conservative/explicit FoldAware scalar/AVX2/AVX-512 scope. Наступного ungated implementation increment немає. У Кроці 15 channelizer strategy `Auto` залишається за versioned comparative profile gate, 100 MS/s claim — за target end-to-end run, а packaging — за managed-only clean-consumer validation. Selected-bin production path лишається unwired за результатами crossover і stage profile.
+Кроки 0–14 та facade/docs/managed-only package частина Кроку 15 перевірені для Conservative/explicit FoldAware scalar/AVX2/AVX-512 scope. Наступний інкремент — versioned equal-spec comparison profile для channelizer strategy `Auto`; 100 MS/s claim окремо залишається за target end-to-end run. Selected-bin production path лишається unwired за результатами crossover і stage profile.

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "generatedOn": "2026-08-19",
+  "package": "IqChannelizer.0.1.0.nupkg",
+  "packageSha256": "a73586794ebc1291241bbc8967fd93bda4616244abda0a0440b150273558f3ac",
+  "requiredEntries": [
+    "LICENSE",
+    "README.md",
+    "lib/net10.0/IqChannelizer.dll"
+  ],
+  "forbiddenFftwEntries": [],
+  "consumerTargetFramework": "net10.0",
+  "packageSource": "isolated-local-directory",
+  "nativeRuntimeBundled": false,
+  "separatelySuppliedRuntime": {
+    "fileName": "libfftw3f-3.dll",
+    "sha256": "42ca18fff35dd12890e04478bc990005b3969cb744f6843976bd436ccd7f0a4c"
+  },
+  "consumerExecution": "validated:Fdc:1"
+}

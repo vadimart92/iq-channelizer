@@ -22,7 +22,7 @@ remains under ignored `TestResults/` and `BenchmarkDotNet.Artifacts/` directorie
 | Diagnostics counters, stage timing, fault/reset status and enabled/disabled allocation contract | Runtime owner | `DiagnosticsTests` | Enforced |
 | Unified facade plan snapshots, lifecycle and reconfiguration boundary | Core API owner | `ContractTests.ResolvedPlanCollectionsAreImmutableSnapshots`, `docs/facade.md` | Enforced |
 | Scalar/AVX2/AVX-512 primitive, FFTW, planning, FDC and PFB statistical evidence exists | Performance owner | `artifacts/benchmarks/latest-summary.md`, retained BDN CSV/Markdown, and schema-v2 `stage-profile.json` | Enforced for recorded configurations; no general realtime claim |
-| Managed-only NuGet excludes FFTW native assets | Release owner | local pack inspection; native assets have `Pack=false`; library has `IsPackable=false` | Guarded pending clean-environment consumer validation |
+| Managed-only NuGet excludes FFTW native assets and runs in a clean consumer | Release owner | `build/verify-package.ps1`, `artifacts/package-validation.json`; native assets have `Pack=false` | Enforced |
 | SIMD dispatch, scalar fallback and unsupported-ISA behavior | Performance owner | `ContractTests`, `SimdEngineTests`, `SimdTests` | Enforced for Scalar, AVX2/FMA and AVX-512F |
 | AVX2/AVX-512 PFB direct rotated-store FIR | DSP/performance owner | `PfbSimdTests`, `PfbAlgebraTests`, `PfbProductionFlowTests`, retained `PfbFirBenchmarks` reports | Enforced |
 | AVX2/AVX-512 FDC wrapped complex extraction | DSP/performance owner | `SimdTests`, `FdcOverlapSaveTests`, `SimdEngineTests`, retained `FdcExtractionBenchmarks` reports | Enforced |

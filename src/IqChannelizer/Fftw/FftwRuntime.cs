@@ -34,9 +34,9 @@ internal static class FftwRuntime
         try
         {
             if (!NativeLibrary.TryLoad(
-                    FftwNative.LibraryName,
-                    typeof(FftwRuntime).Assembly,
-                    DllImportSearchPath.UseDllDirectoryForDependencies,
+                FftwNative.LibraryName,
+                typeof(FftwRuntime).Assembly,
+                    DllImportSearchPath.AssemblyDirectory | DllImportSearchPath.UseDllDirectoryForDependencies,
                     out handle))
             {
                 throw MissingLibraryException();
@@ -87,8 +87,8 @@ internal static class FftwRuntime
     {
         var assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? AppContext.BaseDirectory;
         return new DllNotFoundException(
-            $"Required bundled FFTW library '{FftwNative.LibraryName}' could not be loaded. " +
+            $"Required FFTW library '{FftwNative.LibraryName}' could not be loaded. " +
             $"Expected a Windows x64 DLL beside the application or managed assembly (searched from '{assemblyDirectory}'). " +
-            "Verify that native assets were copied during build/publish and that the process architecture is x64.");
+            "Verify that a compatible native runtime was supplied during build/deployment and that the process architecture is x64.");
     }
 }

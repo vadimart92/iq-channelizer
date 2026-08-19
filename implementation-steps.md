@@ -17,12 +17,12 @@
 ## Остання перевірка
 
 - Дата: **2026-08-19**
-- Verified implementation base commit: `4363f84` + **current Step 14 changeset**
+- Verified implementation base commit: `3b96ba7` + **current managed-only package changeset**
 - Release tests: **229 passed, 0 failed, 0 skipped**
 - Companion tool: **27/27 Vitest**, production Vite build successful
 - Benchmarks: retained **18-case scalar/AVX2/AVX-512 engine comparison**, SIMD kernel comparisons, schema-v2 allocation/latency/stage profile та Step 14 FoldAware/selected-bin comparison
-- Найближчий implementation step: **немає ungated increment; лишилися gated частини Кроку 15 — strategy `Auto`, 100 MS/s evidence і clean-consumer package validation**
-- Release blocker: binary packaging залишається вимкненим за managed-only policy; FFTW не входить до package
+- Найближчий implementation step: **сформувати versioned equal-spec comparison profile для strategy `Auto`; окремо лишається 100 MS/s target evidence**
+- Release packaging: **managed-only NuGet verified; FFTW не входить до package і постачається consumer-ом окремо**
 
 ## Зведена таблиця
 
@@ -43,7 +43,7 @@
 | 12. BenchmarkDotNet suite | виконано | Commit `23b05b0`; 12 statistical cases, retained raw reports і integration stage/working-set profile |
 | 13. SIMD gate | виконано | Creation-time scalar/AVX2/AVX-512 dispatch, 64-byte buffers, PFB direct-store FIR і FDC extraction; retained 18-case engine і kernel comparisons |
 | 14. FoldAware/selected-bin experiments | виконано | Explicit FoldAware пройшов folded/blocker correctness і measured end-to-end comparison; selected-bin direct DFT має stored crossover evidence та лишається unwired |
-| 15. Facade/docs/Auto | частково (ungated facade/docs виконано) | Immutable plan snapshots, complete usage/reconfiguration docs і Definition-of-Done report; `Auto` та binary release лишаються за profile/license gates |
+| 15. Facade/docs/Auto | частково | Facade/docs і managed-only clean-consumer package виконано; strategy `Auto` та 100 MS/s claim лишаються за profile gates |
 
 ## Детальні кроки
 
@@ -285,7 +285,7 @@
 
 ### Крок 15. Завершити facade, docs і Auto останнім
 
-**Статус: частково (ungated facade/docs і hardening scope виконано).** Base commit `4363f84` + current Step 14 changeset; 229/229 Release tests.
+**Статус: частково (facade/docs, hardening і managed-only package scope виконано).** Base commit `3b96ba7` + current package changeset; 229/229 Release tests.
 
 - Завершити public plan inspection, diagnostics, reset/reconfiguration docs і minimal production example.
 - Перевірити Definition of Done і створити acceptance report.
@@ -296,6 +296,6 @@
 
 **Evidence:** `ChannelizerFactory.cs` повертає read-only snapshots для channels і warnings; `ContractTests.ResolvedPlanCollectionsAreImmutableSnapshots` перевіряє обидві strategies та відв’язування від mutable request list. README містить самодостатній request/plan/process/sink example. [`docs/facade.md`](docs/facade.md) фіксує plan inspection, span lifetime, serialized streaming і різницю між `Reset` та створенням нового engine. [`docs/acceptance/report.md`](docs/acceptance/report.md) аудіює кожен пункт Definition of Done і явно відділяє enforced, guarded, deferred та externally blocked gates.
 
-**Design decisions:** in-place reconfiguration не додається: зміна channels/rates/strategy/hints потребує створення та перевірки нового engine поза hot path. SIMD `Auto` є лише hardware/backend selection між accepted scalar/AVX2/AVX-512 paths; channelizer strategy `Auto` не ввімкнена без versioned comparative strategy profile. IqChannelizer має MIT license; FFTW 3.3.5 очікувано використовується для локальної відтворюваності, але DLL/header не входитимуть до NuGet. [`docs/release-policy.md`](docs/release-policy.md) і `IsPackable=false` блокують binary release лише до перевірки managed-only package layout.
+**Design decisions:** in-place reconfiguration не додається: зміна channels/rates/strategy/hints потребує створення та перевірки нового engine поза hot path. SIMD `Auto` є лише hardware/backend selection між accepted scalar/AVX2/AVX-512 paths; channelizer strategy `Auto` не ввімкнена без versioned comparative strategy profile. IqChannelizer має MIT license; FFTW 3.3.5 використовується для локальної відтворюваності, але DLL/header не входять до NuGet. `build/verify-package.ps1` інспектує package, використовує isolated package cache, збирає clean consumer і додає FFTW runtime лише після build.
 
-**Done ще не підтверджено повністю:** лишилися target 100 MS/s realtime evidence, channelizer strategy `Auto` profile та clean-environment consumer validation для managed-only package (локальна перевірка вже підтвердила MIT metadata й відсутність FFTW assets). FoldAware і selected-bin comparisons та AVX-512 measured decision виконано. SigMF generator ведеться окремо й не є gate цього проєкту.
+**Done ще не підтверджено повністю:** лишилися target 100 MS/s realtime evidence та channelizer strategy `Auto` profile. Clean-environment managed-only consumer validation, FoldAware/selected-bin comparisons та AVX-512 measured decision виконано. SigMF generator ведеться окремо й не є gate цього проєкту.
