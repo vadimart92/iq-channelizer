@@ -12,7 +12,7 @@ internal static class PfbMath
         ScalarDft.Backward(phaseVector, output);
         for (var bin = 0; bin < output.Length; bin++)
         {
-            output[bin] *= ScalarRotator.CreatePhasor(bin, output.Length, frameAnchor);
+            output[bin] *= Rotator.CreatePhasor(bin, output.Length, frameAnchor);
         }
     }
 

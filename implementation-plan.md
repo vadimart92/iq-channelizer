@@ -847,6 +847,37 @@ Production oscillator:
 - `Math.SinCos` only at setup/re-anchor, not per sample;
 - scalar tail.
 
+AVX2 implementation intent for `ScalarRotator.RotateInPlaceAvx2`:
+
+- keep the live rotation vector as a double-precision `DoublePhasor phase`;
+- normalize `phase` to unit length at setup and then periodically, with target cadence `16 * 1024` output samples unless benchmark/correctness evidence requires another power-of-two interval;
+- precompute in double once per call:
+  - `step`;
+  - `step4 = step^4`;
+  - optional unroll advances such as `step16 = step^16` if the final loop uses four AVX2 vectors per iteration;
+- generate the four AVX2 lane coefficients with SIMD arithmetic, not by scalar `phasor0/phasor1/phasor2/phasor3` complex multiplies every vector;
+- for each unrolled loop:
+  - `var phase = _phase/current phase`;
+  - `RotateBatch(input, 0)`;
+  - `RotateBatch(input, 1)`;
+  - `RotateBatch(input, 2)`;
+  - `RotateBatch(input, 3)`;
+  - `RotatePhase(ref phase, samplesPerUnrolledLoop)`;
+- `RotateBatch` loads 4 complex AoS samples, materializes `[re0,im0,re1,im1,re2,im2,re3,im3]` coefficients from SIMD-generated powers, applies `Avx2ComplexKernels.MultiplyComplex`, and stores in place;
+- `RotatePhase` advances only the base double phasor by the unrolled sample count, not by rebuilding every lane scalar;
+- after the vector loop, run the scalar tail from the same double `phase`;
+- if `needNormalize(processedSamples)` is true, normalize `phase` by `1 / hypot(phase.Real, phase.Imaginary)`;
+- write the final phase/state back only once after all vector and tail work.
+
+API/state ownership:
+
+- `Rotator.SetPhase(float)` and `Rotator.SetPhaseFromAbsoluteIndex(long)` are setup/re-anchor operations, not per-block hot-path calls;
+- production streaming should anchor residual rotators on construction/reset or after a detected sample discontinuity/drop;
+- consecutive steady-state blocks must call only `RotateInPlace(Span<ComplexF>)`, letting the rotator's stored phase advance across calls;
+- discontinuity detection belongs above the DSP primitive; when a gap is accepted by that layer, reset/re-anchor all affected phase state before processing resumes.
+
+The existing AVX2 shape that uses SIMD only for the final complex multiply is not sufficient for this target. The accepted implementation must move phase-coefficient generation itself out of the scalar per-vector path.
+
 Correctness tests:
 
 - random initial phase;
@@ -2660,7 +2691,7 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 | Phase 2: FFTW | готово | Platform/export/version diagnostics; reusable 64-byte-aligned buffers; cached ref-counted plans; 1D/`plan_many`; in-place/out-of-place; wisdom; smooth lengths; stress, normalization/alignment/no-allocation tests; documented provenance/license policy | Multi-thread runtime і benchmark-selected `MEASURE` default свідомо відкладені до відповідних data/gates |
 | Phase 3: scalar DSP | частково | Independent scalar DFT/rotator; normalized-cache Kaiser designer; tap-density-driven FFT response grid і conservative folded-alias evaluators; Conservative та explicit FoldAware PFB prototypes; scalar FIR, power-of-two decimator, standalone spectral extractor; generalized `P > 1` PFB phase FIR, correction/shift references і direct FIR+DFT oracle; tested SIMD AoS primitives | Production cascaded half-band specialization лишається окремим measured optimization scope |
 | Phase 4: reference DDC | готово | Independent `System.Numerics.Complex` DDC з absolute-index NCO, власними double FIR/decimation, exact rational timing alignment, signal metrics і reusable deterministic generators; обидва production engines зіставлені з oracle | Немає для scalar Conservative scope |
-| Phase 5: SIMD foundation | готово (AVX2/AVX-512) | Creation-time `Auto/Scalar/Avx2/Avx512` resolution, scalar fallback, actionable unsupported behavior, 64-byte FFTW buffers, tested AoS primitives, FDC extraction і PFB phase-parallel direct-store kernels | residual AVX2 rotator не wired через відсутність переконливого benefit |
+| Phase 5: SIMD foundation | готово (AVX2/AVX-512 + true SIMD residual rotator) | Creation-time `Auto/Scalar/Avx2/Avx512` resolution, scalar fallback, actionable unsupported behavior, 64-byte FFTW buffers, tested AoS primitives, FDC extraction, PFB phase-parallel direct-store kernels і stateful residual `Rotator` API | AVX2 residual rotator використовує `SetPhase(float phase)`/`SetPhaseFromAbsoluteIndex(...)` setup і `RotateInPlace(Span<ComplexF>)` hot API; lane phase coefficients генеруються SIMD-ом у loop, scalar double лишається тільки для base phase advance/normalization |
 | Phase 6: FDC MVP | готово | Реальний multi-D overlap-save: per-channel power-of-two planner, aligned shared history/chunk/N, full `[history|chunk]` FFT once, causal Kaiser anti-alias response з alias budget і folded validation, grouped short backward plans, exact discard, explicit `1/N`, absolute phase, independent-DDC та alias-sweep acceptance | Benchmark-backed planner cost model лишається майбутнім profile-driven scope; forced hint залишається global override |
 | Phase 7: PFB algebra MVP | готово | Generic `K/H`; Conservative Kaiser `T=K*P`, `P>1` scalar branch equation; exact FIR group delay; independent double direct FIR+DFT oracle; explicit correction/pre-FFT shift equivalence; `H=K`, `H=K/2`, arbitrary H, signed-bin, non-aligned-origin і partition tests | Немає для algebra scope; production SIMD реалізований у Phase 8 |
 | Phase 8: PFB production path | готово (scalar/AVX2/AVX-512) | Filtered phase vectors пишуться прямо у FFTW-owned input; AVX2/AVX-512 vectorize four/eight phases with expanded coefficients and direct two-segment rotated store; batched transform; precomputed unique-bin gather/fan-out; periodic residual rotation; per-channel validated stateful power-of-two fine FIR/decimator; exact counts/delays; Reset/no-allocation/independent-DDC tests | fine-stage specialization лишається measured future scope |
@@ -2704,4 +2735,4 @@ Do not start by swapping I/Q, reversing bins, conjugating, or changing FFT direc
 
 ### 17.4. Найближчий рекомендований інкремент
 
-Кроки 0–15 та Definition of Done перевірені для documented managed-only Windows x64, Conservative/explicit FoldAware, scalar/AVX2/AVX-512 scope. Наступного запланованого інкременту немає. Target 100 MS/s result є configuration-specific, `Auto` guarded exact profile match, а selected-bin production path лишається unwired за результатами crossover і stage profile.
+Кроки 0–16 та Definition of Done перевірені для documented managed-only Windows x64, Conservative/explicit FoldAware, scalar/AVX2/AVX-512 scope. Наступного запланованого інкременту немає. Target 100 MS/s result є configuration-specific, `Auto` guarded exact profile match, а selected-bin production path лишається unwired за результатами crossover і stage profile.

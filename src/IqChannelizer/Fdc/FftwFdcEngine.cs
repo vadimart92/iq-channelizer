@@ -11,7 +11,9 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
     private readonly InverseGroup[] _inverseGroups;
     private readonly ComplexF[][] _outputs;
     private readonly FdcChannelDesign[] _channelDesigns;
+    private readonly Rotator[] _residualRotators;
     private readonly SimdPreference _simdBackend;
+    private bool _residualRotatorsAnchored;
 
     public FftwFdcEngine(
         ResolvedChannelizerPlan plan,
@@ -32,6 +34,13 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
                 group.Select(item => item.ChannelIndex).ToArray()))
             .ToArray();
         _outputs = plan.Channels.Select(channel => new ComplexF[channel.OutputSamplesPerProcess]).ToArray();
+        _residualRotators = plan.Channels
+            .Select(channel => new Rotator(
+                channel.ResidualFrequencyHz,
+                plan.InputSampleRateHz,
+                channel.DecimationFactor,
+                simdBackend == SimdPreference.Avx2 ? SimdPreference.Avx2 : SimdPreference.Scalar))
+            .ToArray();
     }
 
     internal long ForwardTransformExecutionCount { get; private set; }
@@ -78,7 +87,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
                     group.ShortLength);
                 // Local FFT mixing omits the absolute frame origin. This scalar restores it once per block;
                 // the short-IFFT index then supplies the local coarse phase progression.
-                var blockPhase = ScalarRotator.CreatePhasor(
+                var blockPhase = Rotator.CreatePhasor(
                     channel.CoarseCenterFrequencyHz,
                     Plan.InputSampleRateHz,
                     frameStartInputIndex);
@@ -135,10 +144,10 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
             }
 
             var channelStartedAt = Diagnostics.BeginTiming();
+            EnsureResidualRotatorsAnchored(firstNewSampleIndex);
             for (var groupChannelIndex = 0; groupChannelIndex < group.ChannelIndices.Length; groupChannelIndex++)
             {
                 var channelIndex = group.ChannelIndices[groupChannelIndex];
-                var channel = Plan.Channels[channelIndex];
                 var inverseOutput = group.BackwardPlan.Output.Slice(
                     groupChannelIndex * group.ShortLength,
                     group.ShortLength);
@@ -148,12 +157,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
                     destination[index] = inverseOutput[group.Discard + index] * (1f / n);
                 }
 
-                ScalarRotator.RotateInPlace(
-                    destination,
-                    channel.ResidualFrequencyHz,
-                    Plan.InputSampleRateHz,
-                    firstNewSampleIndex,
-                    group.Decimation);
+                _residualRotators[channelIndex].RotateInPlace(destination);
             }
 
             if (Diagnostics.IsTimingEnabled)
@@ -177,6 +181,23 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
         }
 
         _forwardPlan.Dispose();
+    }
+
+    protected override void ResetCore() => _residualRotatorsAnchored = false;
+
+    private void EnsureResidualRotatorsAnchored(long firstNewSampleIndex)
+    {
+        if (_residualRotatorsAnchored)
+        {
+            return;
+        }
+
+        foreach (var rotator in _residualRotators)
+        {
+            rotator.SetPhaseFromAbsoluteIndex(firstNewSampleIndex);
+        }
+
+        _residualRotatorsAnchored = true;
     }
 
     private sealed class InverseGroup

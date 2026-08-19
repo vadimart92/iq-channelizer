@@ -17,11 +17,13 @@ internal sealed class PartitionedFftwFdcEngine : StreamingEngineBase
     private readonly InverseGroup[] _inverseGroups;
     private readonly ComplexF[][] _outputs;
     private readonly PartitionedFdcChannelDesign[] _channelDesigns;
+    private readonly Rotator[] _residualRotators;
     private readonly SimdPreference _simdBackend;
     private readonly int _partitionLength;
     private readonly int _transformLength;
     private int _ringHead;
     private bool _initialized;
+    private bool _residualRotatorsAnchored;
 
     public PartitionedFftwFdcEngine(
         ResolvedChannelizerPlan plan,
@@ -66,6 +68,13 @@ internal sealed class PartitionedFftwFdcEngine : StreamingEngineBase
             .ToArray();
         _outputs = plan.Channels
             .Select(channel => new ComplexF[channel.OutputSamplesPerProcess])
+            .ToArray();
+        _residualRotators = plan.Channels
+            .Select(channel => new Rotator(
+                channel.ResidualFrequencyHz,
+                plan.InputSampleRateHz,
+                channel.DecimationFactor,
+                simdBackend == SimdPreference.Avx2 ? SimdPreference.Avx2 : SimdPreference.Scalar))
             .ToArray();
     }
 
@@ -112,7 +121,7 @@ internal sealed class PartitionedFftwFdcEngine : StreamingEngineBase
                     }
                 }
 
-                var blockPhase = ScalarRotator.CreatePhasor(
+                var blockPhase = Rotator.CreatePhasor(
                     channel.CoarseCenterFrequencyHz,
                     Plan.InputSampleRateHz,
                     spectrumWindowStart);
@@ -131,6 +140,7 @@ internal sealed class PartitionedFftwFdcEngine : StreamingEngineBase
             ExecuteInverse(group.BackwardPlan);
 
             var channelStartedAt = Diagnostics.BeginTiming();
+            EnsureResidualRotatorsAnchored(firstNewSampleIndex);
             for (var groupChannelIndex = 0;
                  groupChannelIndex < group.ChannelIndices.Length;
                  groupChannelIndex++)
@@ -147,12 +157,7 @@ internal sealed class PartitionedFftwFdcEngine : StreamingEngineBase
                     destination[index] = inverseOutput[group.Discard + index] * scale;
                 }
 
-                ScalarRotator.RotateInPlace(
-                    destination,
-                    channel.ResidualFrequencyHz,
-                    Plan.InputSampleRateHz,
-                    firstNewSampleIndex,
-                    group.Decimation);
+                _residualRotators[channelIndex].RotateInPlace(destination);
             }
 
             if (Diagnostics.IsTimingEnabled)
@@ -172,6 +177,7 @@ internal sealed class PartitionedFftwFdcEngine : StreamingEngineBase
     {
         _initialized = false;
         _ringHead = 0;
+        _residualRotatorsAnchored = false;
     }
 
     protected override void DisposeCore()
@@ -182,6 +188,21 @@ internal sealed class PartitionedFftwFdcEngine : StreamingEngineBase
         }
 
         _forwardPlan.Dispose();
+    }
+
+    private void EnsureResidualRotatorsAnchored(long firstNewSampleIndex)
+    {
+        if (_residualRotatorsAnchored)
+        {
+            return;
+        }
+
+        foreach (var rotator in _residualRotators)
+        {
+            rotator.SetPhaseFromAbsoluteIndex(firstNewSampleIndex);
+        }
+
+        _residualRotatorsAnchored = true;
     }
 
     private void UpdateSpectrumRing(ReadOnlySpan<ComplexF> input)

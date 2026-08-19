@@ -1,4 +1,5 @@
 using IqChannelizer.Abstractions;
+using IqChannelizer.Dsp;
 
 namespace IqChannelizer.Tests;
 
@@ -73,7 +74,9 @@ public sealed class StreamingFlowTests
                 2 * Math.PI * frequency * (firstAbsoluteIndex + (index * stride)) / sampleRate);
         }
 
-        IqChannelizer.Dsp.ScalarRotator.RotateInPlace(samples, frequency, sampleRate, firstAbsoluteIndex, stride);
+        var rotator = new Rotator(frequency, sampleRate, stride);
+        rotator.SetPhaseFromAbsoluteIndex(firstAbsoluteIndex);
+        rotator.RotateInPlace(samples);
 
         Assert.That(samples.All(x => Math.Abs(x.Real - 1) < 2e-5), Is.True);
         Assert.That(samples.All(x => Math.Abs(x.Imaginary) < 2e-5), Is.True);
@@ -95,12 +98,9 @@ public sealed class StreamingFlowTests
             samples[index] = ComplexF.FromPolar(2 * Math.PI * (double)phaseCycles);
         }
 
-        IqChannelizer.Dsp.ScalarRotator.RotateInPlace(
-            samples,
-            frequency,
-            sampleRate,
-            firstAbsoluteIndex,
-            inputSamplesPerOutputSample: 1);
+        var rotator = new Rotator(frequency, sampleRate, 1);
+        rotator.SetPhaseFromAbsoluteIndex(firstAbsoluteIndex);
+        rotator.RotateInPlace(samples);
 
         Assert.That(samples.All(value => Math.Abs(value.Real - 1) < 2e-5), Is.True);
         Assert.That(samples.All(value => Math.Abs(value.Imaginary) < 2e-5), Is.True);

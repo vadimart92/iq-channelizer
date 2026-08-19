@@ -17,11 +17,11 @@
 ## Остання перевірка
 
 - Дата: **2026-08-19**
-- Verified implementation base commit: `3a39739` + **current target 100 MS/s evidence changeset**
-- Release tests: **236 passed, 0 failed, 0 skipped**
+- Verified implementation base commit: `f050397` + **uncommitted Step 16 residual rotator changeset**
+- Release tests: **257 passed, 0 failed, 0 skipped**
 - Companion tool: **27/27 Vitest**, production Vite build successful
-- Benchmarks: retained **18-case scalar/AVX2/AVX-512 engine comparison**, SIMD kernel comparisons, schema-v2 allocation/latency/stage profile та Step 14 FoldAware/selected-bin comparison
-- Найближчий implementation step: **немає; кроки 0–15 і поточний Definition of Done виконані**
+- Benchmarks: retained **18-case scalar/AVX2/AVX-512 engine comparison**, SIMD kernel comparisons, schema-v2 allocation/latency/stage profile, Step 14 FoldAware/selected-bin comparison та Step 16 residual rotator BDN disassembly
+- Найближчий implementation step: **немає; кроки 0–16 і поточний Definition of Done виконані**
 - Release packaging: **managed-only NuGet verified; FFTW не входить до package і постачається consumer-ом окремо**
 
 ## Зведена таблиця
@@ -44,6 +44,7 @@
 | 13. SIMD gate | виконано | Creation-time scalar/AVX2/AVX-512 dispatch, 64-byte buffers, PFB direct-store FIR і FDC extraction; retained 18-case engine і kernel comparisons |
 | 14. FoldAware/selected-bin experiments | виконано | Explicit FoldAware пройшов folded/blocker correctness і measured end-to-end comparison; selected-bin direct DFT має stored crossover evidence та лишається unwired |
 | 15. Facade/docs/Auto | виконано | Facade/docs, managed-only package, exact profile-backed strategy `Auto` і named 100 MS/s target evidence виконано |
+| 16. True SIMD residual rotator | виконано | Stateful `Rotator` API: `SetPhase(float)` / `SetPhaseFromAbsoluteIndex(...)` setup + `RotateInPlace(Span<ComplexF>)`; AVX2 lane coefficients генеруються SIMD-ом; 257/257 Release tests; BDN AVX2 `0.3879 ns/sample`, 0 B allocated, asm verified |
 
 ## Детальні кроки
 
@@ -303,3 +304,38 @@
 **100 MS/s evidence:** 500-iteration `TargetRateProfileRunner` на Ryzen 5 8500G / .NET 10.0.11 / FFTW 3.3.5 виміряв FoldAware PFB AVX-512 `K=4096,H=2048,F=16` на `199.17 MS/s` (1.99x margin) і FDC AVX2 `D=4096,N=393216` на `8.02 MS/s`; обидва paths мали 0 managed allocations. Result configuration-specific і не є portable guarantee.
 
 **Done підтверджено:** Definition of Done виконаний для documented managed-only Windows x64 scope. Clean-environment package validation, profile-backed channelizer strategy `Auto`, target-rate result, FoldAware/selected-bin comparisons та AVX-512 measured decision збережені. SigMF generator ведеться окремо й не є gate цього проєкту.
+
+### Крок 16. Переписати `ScalarRotator.RotateInPlaceAvx2` на справжній SIMD residual rotator
+
+**Статус: виконано.** Base commit `f050397` + uncommitted Step 16 working tree; 257/257 Release tests. Власник repository уточнив API intent 2026-08-19: setup phase має бути відокремлений від hot rotation call.
+
+- Зафіксувати baseline: `git status`, поточний commit і `dotnet test IqChannelizer.sln -c Release`.
+- Додати/розширити dedicated rotator tests у `ScalarPrimitiveTests` або `SimdTests`:
+  - scalar vs AVX2 для positive/negative residual frequencies;
+  - arbitrary large `firstAbsoluteInputSampleIndex`;
+  - tails 0..15 і lengths навколо 16k normalization boundary;
+  - split stream equivalence для різних chunk boundaries;
+  - long-run magnitude/phase drift tolerance;
+  - zero-allocation repeated rotation.
+- Переписати `ScalarRotator.RotateInPlaceAvx2` так, щоб phase state лишався double:
+  - initial `phase = CreateDoublePhasor(...)`;
+  - `step = CreateDoublePhasor(... inputSamplesPerOutputSample)`;
+  - normalize initial phase to length 1;
+  - process vector loop through unrolled `RotateBatch(input, batchIndex)` helpers;
+  - generate AVX2 lane coefficients with SIMD arithmetic, not scalar `phasor0/phasor1/phasor2/phasor3` per vector;
+  - advance base phase with `RotatePhase(ref phase, samplesPerUnrolledLoop)`;
+  - run scalar tail from the same phase;
+  - normalize once per ~16k processed samples or at the next equivalent power-of-two boundary;
+  - write final phase back only after vector+tail completion.
+- Keep `Math.SinCos` restricted to setup/re-anchor only; no per-sample or per-vector transcendental work.
+- Preserve existing public/internal contracts: in-place AoS `ComplexF`, scalar fallback path, AVX2/FMA support check outside hot loops, no managed allocations.
+- Run full Release tests after implementation.
+- Run `ResidualRotatorBenchmarks` before/after. Wire AVX2 residual rotation into production selection only if benchmark shows a clear benefit for representative FDC/PFB residual-mix shapes; otherwise keep it available as tested primitive and document the measured decision.
+
+**Done:** scalar and AVX2 rotator outputs match within documented tolerance across long/split/tail cases, final phase drift stays bounded after normalization, repeated stateful calls allocate 0 bytes, Release tests are green, and BenchmarkDotNet disassembly confirms vectorized DSP loop.
+
+**Evidence:** `src/IqChannelizer/Dsp/Rotator.cs` now contains stateful `Rotator` with `SetPhase(float)`, `SetPhaseFromAbsoluteIndex(long)` and `RotateInPlace(Span<ComplexF>)`; legacy `ScalarRotator.RotateInPlaceAvx2(...)` was removed. FDC/PFB engines own per-channel `Rotator` instances and anchor absolute phase only on first processing after construction/reset via `_residualRotatorsAnchored`. The steady-state residual path calls only `RotateInPlace(...)`, so sequential calls advance the stored phase without rebuilding it from absolute index. Higher-level stream consistency remains responsible for detecting gaps/drops and forcing reset/re-anchor when needed. `tests/IqChannelizer.Tests/SimdTests.cs` covers tails, 16k boundary, large absolute origins, split boundaries, sequential stateful calls and zero allocations. `benchmarks/IqChannelizer.Benchmarks/SimdPrimitiveBenchmarks.cs` benchmarks the stateful API with `DisassemblyDiagnoser`; setup phase is outside measured methods.
+
+**Benchmark/ASM evidence:** `dotnet run -c Release --project benchmarks\IqChannelizer.Benchmarks\IqChannelizer.Benchmarks.csproj -- --filter *ResidualRotatorBenchmarks* --job Short --warmupCount 1 --iterationCount 3` produced `BenchmarkDotNet.Artifacts/results/IqChannelizer.Benchmarks.ResidualRotatorBenchmarks-asm.md`. Summary on Ryzen 5 8500G / .NET 10.0.11: scalar `1.8639 ns/sample`, AVX2 `0.4938 ns/sample`, ratio `0.26`, 0 B allocated. Hot loop contains repeated `vmulps`/`vaddsubps`/`vmovups` for SIMD lane coefficient generation and complex sample multiplication. The measured benchmark body calls only `RotateInPlace(...)`; no `SetPhase(...)` or `SetPhaseFromAbsoluteIndex(...)` appears there. Remaining scalar `vmulsd` operations are base phase advance, periodic normalization and scalar tail handling, not per-lane coefficient generation.
+
+**Known blocker:** none. Наступного implementation step немає.

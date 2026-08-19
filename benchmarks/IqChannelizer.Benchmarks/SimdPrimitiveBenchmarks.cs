@@ -1,4 +1,5 @@
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Diagnosers;
 using IqChannelizer.Abstractions;
 using IqChannelizer.Dsp;
 
@@ -50,25 +51,34 @@ public class FdcExtractionBenchmarks
 }
 
 [MemoryDiagnoser]
+[DisassemblyDiagnoser(maxDepth: 3, exportCombinedDisassemblyReport: true, printSource: true)]
 public class ResidualRotatorBenchmarks
 {
     private ComplexF[] _samples = null!;
+    private Rotator _scalarRotator = null!;
+    private Rotator _avx2Rotator = null!;
 
     [GlobalSetup]
-    public void Setup() =>
+    public void Setup()
+    {
         _samples = Enumerable.Range(0, 4096).Select(index => ComplexF.FromPolar(index * 0.013)).ToArray();
+        _scalarRotator = new Rotator(12_345.25, 1_000_000, 7);
+        _scalarRotator.SetPhaseFromAbsoluteIndex(1L << 48);
+        _avx2Rotator = new Rotator(12_345.25, 1_000_000, 7, SimdPreference.Avx2);
+        _avx2Rotator.SetPhaseFromAbsoluteIndex(1L << 48);
+    }
 
     [Benchmark(Baseline = true, OperationsPerInvoke = 4096)]
     public ComplexF Scalar()
     {
-        ScalarRotator.RotateInPlace(_samples, 12_345.25, 1_000_000, 1L << 48, 7);
+        _scalarRotator.RotateInPlace(_samples);
         return _samples[^1];
     }
 
     [Benchmark(OperationsPerInvoke = 4096)]
     public ComplexF Avx2()
     {
-        ScalarRotator.RotateInPlaceAvx2(_samples, 12_345.25, 1_000_000, 1L << 48, 7);
+        _avx2Rotator.RotateInPlace(_samples);
         return _samples[^1];
     }
 }

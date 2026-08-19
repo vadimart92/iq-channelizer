@@ -18,8 +18,10 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
     private readonly int[] _channelRoutes;
     private readonly ComplexF[][] _coarseStreams;
     private readonly ComplexF[][] _rotatedStreams;
+    private readonly Rotator[] _residualRotators;
     private readonly StreamingFineDecimator[] _fineDecimators;
     private readonly ComplexF[][] _outputs;
+    private bool _residualRotatorsAnchored;
 
     public FftwPfbEngine(
         ResolvedChannelizerPlan plan,
@@ -48,6 +50,13 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         _coarseStreams = _uniqueBins.Select(_ => new ComplexF[frames]).ToArray();
         _rotatedStreams = plan.Channels
             .Select(channel => channel.ResidualFrequencyHz == 0 ? [] : new ComplexF[frames])
+            .ToArray();
+        _residualRotators = plan.Channels
+            .Select(channel => new Rotator(
+                channel.ResidualFrequencyHz,
+                plan.InputSampleRateHz,
+                hopSize,
+                simdBackend == SimdPreference.Avx2 ? SimdPreference.Avx2 : SimdPreference.Scalar))
             .ToArray();
         _fineDecimators = fineStageDesigns.Select(design => new StreamingFineDecimator(design, frames)).ToArray();
         _outputs = plan.Channels.Select(channel => new ComplexF[channel.OutputSamplesPerProcess]).ToArray();
@@ -144,12 +153,8 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
                 var rotated = _rotatedStreams[channelIndex].AsSpan();
                 fineInput.CopyTo(rotated);
                 var firstAnchor = firstNewSampleIndex + _hopSize - 1;
-                ScalarRotator.RotateInPlace(
-                    rotated,
-                    channel.ResidualFrequencyHz,
-                    Plan.InputSampleRateHz,
-                    firstAnchor,
-                    _hopSize);
+                EnsureResidualRotatorsAnchored(firstAnchor);
+                _residualRotators[channelIndex].RotateInPlace(rotated);
                 fineInput = rotated;
             }
 
@@ -179,6 +184,23 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         {
             decimator.Reset();
         }
+
+        _residualRotatorsAnchored = false;
+    }
+
+    private void EnsureResidualRotatorsAnchored(long firstAnchor)
+    {
+        if (_residualRotatorsAnchored)
+        {
+            return;
+        }
+
+        foreach (var rotator in _residualRotators)
+        {
+            rotator.SetPhaseFromAbsoluteIndex(firstAnchor);
+        }
+
+        _residualRotatorsAnchored = true;
     }
 
 }

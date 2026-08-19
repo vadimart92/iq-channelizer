@@ -205,7 +205,13 @@ public sealed class SimdTests
 
     [TestCase(1)]
     [TestCase(7)]
+    [TestCase(15)]
+    [TestCase(16)]
+    [TestCase(17)]
     [TestCase(1025)]
+    [TestCase(16 * 1024 - 1)]
+    [TestCase(16 * 1024)]
+    [TestCase(16 * 1024 + 7)]
     public void Avx2ResidualRotatorMatchesScalarAcrossReanchorAndLargeOrigin(int length)
     {
         if (!Avx2.IsSupported || !Fma.IsSupported)
@@ -216,9 +222,67 @@ public sealed class SimdTests
         var scalar = RandomComplex(new Random(91 + length), length);
         var avx = scalar.ToArray();
         const long first = (1L << 53) + 12_345;
-        ScalarRotator.RotateInPlace(scalar, 123_456.75, 1_000_000, first, 7);
-        ScalarRotator.RotateInPlaceAvx2(avx, 123_456.75, 1_000_000, first, 7);
+        var scalarRotator = new Rotator(123_456.75, 1_000_000, 7);
+        var avxRotator = new Rotator(123_456.75, 1_000_000, 7, SimdPreference.Avx2);
+        scalarRotator.SetPhaseFromAbsoluteIndex(first);
+        avxRotator.SetPhaseFromAbsoluteIndex(first);
+
+        scalarRotator.RotateInPlace(scalar);
+        avxRotator.RotateInPlace(avx);
         AssertEquivalent(scalar, avx);
+    }
+
+    [TestCase(83_125.25)]
+    [TestCase(-211_009.75)]
+    public void Avx2ResidualRotatorAdvancesPhaseAcrossSequentialCalls(double frequencyHz)
+    {
+        if (!Avx2.IsSupported || !Fma.IsSupported)
+        {
+            Assert.Ignore("AVX2/FMA is not supported on this test host.");
+        }
+
+        const int inputSamplesPerOutputSample = 5;
+        const double sampleRateHz = 2_400_000;
+        const long first = -(1L << 48) + 7_777;
+        var scalar = RandomComplex(new Random(0x4216), 19_973);
+        var avx = scalar.ToArray();
+        var scalarRotator = new Rotator(frequencyHz, sampleRateHz, inputSamplesPerOutputSample);
+        var avxRotator = new Rotator(frequencyHz, sampleRateHz, inputSamplesPerOutputSample, SimdPreference.Avx2);
+        scalarRotator.SetPhaseFromAbsoluteIndex(first);
+        avxRotator.SetPhaseFromAbsoluteIndex(first);
+
+        var offset = 0;
+        foreach (var length in new[] { 1, 31, 4_096, 7, 8_192, 23, scalar.Length - 12_350 })
+        {
+            scalarRotator.RotateInPlace(scalar.AsSpan(offset, length));
+            avxRotator.RotateInPlace(avx.AsSpan(offset, length));
+            offset += length;
+        }
+
+        AssertEquivalent(scalar, avx);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Avx2ResidualRotatorDoesNotAllocate()
+    {
+        if (!Avx2.IsSupported || !Fma.IsSupported)
+        {
+            Assert.Ignore("AVX2/FMA is not supported on this test host.");
+        }
+
+        var samples = RandomComplex(new Random(0xA220), 16 * 1024 + 17);
+        var rotator = new Rotator(-77_123.5, 10_000_000, 3, SimdPreference.Avx2);
+        rotator.SetPhaseFromAbsoluteIndex(1L << 42);
+        rotator.RotateInPlace(samples);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+
+        for (var iteration = 0; iteration < 100; iteration++)
+        {
+            rotator.RotateInPlace(samples);
+        }
+
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero);
     }
 
     private static ComplexF[] RandomComplex(Random random, int length) => Enumerable.Range(0, length)
