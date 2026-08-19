@@ -1,4 +1,5 @@
 using IqChannelizer.Abstractions;
+using IqChannelizer.Dsp;
 
 namespace IqChannelizer.Pfb;
 
@@ -42,9 +43,21 @@ internal static class PfbPlanner
                     candidate.FftSize,
                     candidate.HopSize,
                     request.Hints?.PfbPrototypeDesign ?? PfbPrototypeDesignMode.Conservative);
+                var prototypeRequirements = PfbPrototypeDesign.Analyze(
+                    request,
+                    candidate.FftSize,
+                    candidate.HopSize);
                 var coarseRate = request.InputSampleRateHz / candidate.HopSize;
                 var fineStages = request.Channels
-                    .Select(channel => PfbFineStageDesigner.Design(channel, coarseRate, candidate.FramesPerBatch))
+                    .Select(channel => PfbFineStageDesigner.Design(
+                        channel,
+                        coarseRate,
+                        candidate.FramesPerBatch,
+                        PrototypeAloneSatisfiesChannel(
+                            request,
+                            channel,
+                            candidate.FftSize,
+                            prototypeRequirements)))
                     .ToArray();
                 var requirements = new InputRequirements(prototype.Taps.Length - 1, candidate.ChunkSize);
                 var fullyForcedShape = request.Hints?.PfbFftSize.HasValue == true &&
@@ -90,7 +103,7 @@ internal static class PfbPlanner
         ChannelizerRequest request,
         InputBlockConstraints constraints)
     {
-        var targetFftSize = TargetFftSize(request);
+        var targetFftSize = TargetFftSize(request, constraints);
         var candidates = new List<Candidate>();
         foreach (var fftSize in EnumerateFftSizes(request, targetFftSize))
         {
@@ -173,8 +186,14 @@ internal static class PfbPlanner
 
             if (feasible)
             {
-                yield return hopSize;
-                count++;
+                // A forced frame count can make the largest geometry-feasible hops
+                // exceed MaxChunkSize. Apply the shortlist only after full block
+                // feasibility so a smaller valid H cannot be hidden by invalid ones.
+                if (EnumerateFrameCounts(request, constraints, hopSize).Any())
+                {
+                    yield return hopSize;
+                    count++;
+                }
             }
         }
     }
@@ -220,7 +239,7 @@ internal static class PfbPlanner
         }
     }
 
-    private static int TargetFftSize(ChannelizerRequest request)
+    private static int TargetFftSize(ChannelizerRequest request, InputBlockConstraints constraints)
     {
         if (request.Hints?.PfbFftSize is { } forced)
         {
@@ -235,7 +254,90 @@ internal static class PfbPlanner
             target <<= 1;
         }
 
-        return Math.Clamp(target, 2, MaximumAutomaticFftSize);
+        target = Math.Clamp(target, 2, MaximumAutomaticFftSize);
+
+        // Conservative prototypes already enforce the requested per-channel
+        // stopband. When every center lands exactly on the preceding power-of-two
+        // grid and H=K is feasible, that critical shape avoids both oversampling
+        // and a redundant D=1 fine FIR. Keep FoldAware on the general ranking path:
+        // its wider prototype stop edge still requires the per-channel fine stage.
+        var criticalFftSize = target / 2;
+        if ((request.Hints?.PfbPrototypeDesign ?? PfbPrototypeDesignMode.Conservative) ==
+            PfbPrototypeDesignMode.Conservative &&
+            criticalFftSize >= 2 &&
+            criticalFftSize <= constraints.MaxChunkSize &&
+            (request.Hints?.PfbHopSize is not { } forcedHop || forcedHop == criticalFftSize) &&
+            EnumerateFrameCounts(request, constraints, criticalFftSize).Any() &&
+            CentersAreBinAligned(request, criticalFftSize))
+        {
+            try
+            {
+                _ = PfbPrototypeDesign.Analyze(request, criticalFftSize, criticalFftSize);
+                return criticalFftSize;
+            }
+            catch (ArgumentException)
+            {
+                // The ordinary generalized K/H search remains authoritative.
+            }
+        }
+
+        return target;
+    }
+
+    private static bool PrototypeAloneSatisfiesChannel(
+        ChannelizerRequest request,
+        ChannelRequest channel,
+        int fftSize,
+        PfbPrototypeRequirements prototypeRequirements)
+    {
+        if ((request.Hints?.PfbPrototypeDesign ?? PfbPrototypeDesignMode.Conservative) !=
+            PfbPrototypeDesignMode.Conservative)
+        {
+            return false;
+        }
+
+        var bin = FrequencyBinMath.NearestNormalizedBin(
+            channel.CenterFrequencyHz,
+            request.InputSampleRateHz,
+            fftSize);
+        var signedBin = FrequencyBinMath.ToSignedBin(bin, fftSize);
+        var coarseCenter = signedBin * request.InputSampleRateHz / fftSize;
+        if (FrequencyBinMath.WrappedDifference(
+                channel.CenterFrequencyHz,
+                coarseCenter,
+                request.InputSampleRateHz) != 0)
+        {
+            return false;
+        }
+
+        var channelPassbandEdge = channel.PassbandWidthHz / 2;
+        var channelStopbandEdge = (channel.PassbandWidthHz + channel.TransitionWidthHz) / 2;
+        return prototypeRequirements.PassbandEdgeHz >= channelPassbandEdge &&
+               prototypeRequirements.StopbandEdgeHz <= channelStopbandEdge &&
+               prototypeRequirements.StopbandAttenuationDb >= channel.StopbandAttenuationDb &&
+               prototypeRequirements.PassbandRippleDb <= channel.PassbandRippleDb;
+    }
+
+    private static bool CentersAreBinAligned(ChannelizerRequest request, int fftSize)
+    {
+        foreach (var channel in request.Channels)
+        {
+            var bin = FrequencyBinMath.NearestNormalizedBin(
+                channel.CenterFrequencyHz,
+                request.InputSampleRateHz,
+                fftSize);
+            var signedBin = FrequencyBinMath.ToSignedBin(bin, fftSize);
+            var coarseCenter = signedBin * request.InputSampleRateHz / fftSize;
+            if (FrequencyBinMath.WrappedDifference(
+                    channel.CenterFrequencyHz,
+                    coarseCenter,
+                    request.InputSampleRateHz) != 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static void AddIfValid(ISet<int> values, int value)

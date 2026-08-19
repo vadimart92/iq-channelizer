@@ -89,6 +89,15 @@ internal sealed class FftwComplexPlan : IDisposable
         }
     }
 
+    internal ReadOnlySpan<ComplexF> Output
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _output!.ReadOnlySpan;
+        }
+    }
+
     public void Execute(ReadOnlySpan<ComplexF> input, Span<ComplexF> output)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -114,8 +123,14 @@ internal sealed class FftwComplexPlan : IDisposable
             throw new ArgumentException($"Expected exactly {ElementCount} FFTW output values.", nameof(output));
         }
 
+        ExecuteFromInput();
+        Output.CopyTo(output);
+    }
+
+    internal void ExecuteFromInput()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         FftwNative.ExecuteDft(_lease!.Plan, _input!.Pointer, _output!.Pointer);
-        _output.ReadOnlySpan.CopyTo(output);
     }
 
     public void Dispose()

@@ -72,6 +72,20 @@ public sealed class FftwTests
         AssertComplexEqual(expected, actual, 2e-5f);
     }
 
+    [Test]
+    public void NativeOutputViewAvoidsManagedOutputStaging()
+    {
+        ComplexF[] input = [new(1, 2), new(-3, 1), new(0.5f, -2), new(4, 0)];
+        var expected = new ComplexF[input.Length];
+        ScalarDft.Forward(input, expected);
+        using var plan = new FftwComplexPlan(input.Length, 1, FftwNative.Forward);
+
+        input.CopyTo(plan.WritableInput);
+        plan.ExecuteFromInput();
+
+        AssertComplexEqual(expected, plan.Output, 2e-5f);
+    }
+
     [TestCase(3, 1)]
     [TestCase(5, 2)]
     [TestCase(6, 3)]

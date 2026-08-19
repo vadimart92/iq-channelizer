@@ -50,7 +50,7 @@ The caller owns the ring buffer and supplies exactly `[HistorySize | ChunkSize]`
 
 Without a forced `FdcDecimationFactor`, the FDC planner selects a power-of-two decimation per channel from its occupied bandwidth and minimum/preferred output rates, aligns shared history/chunk requirements to the largest selected factor, and groups channels with equal short-IFFT lengths. A forced factor remains a global deterministic override and is validated for every channel.
 
-Without complete forced PFB hints, the deterministic feasibility planner searches power-of-two `K` values, arbitrary integer `H`, and bounded frame counts. It checks single-bin geometry, periodic residuals, required output rates, chunk bounds, Conservative prototype response, and every fine-stage response before returning a plan. Until a target-hardware benchmark profile exists, the plan contains a warning and `BenchmarkProfileKey` remains null. Supplying all three PFB shape hints is a deterministic override.
+Without complete forced PFB hints, the deterministic feasibility planner searches power-of-two `K` values, arbitrary integer `H`, and bounded frame counts. It checks single-bin geometry, periodic residuals, required output rates, chunk bounds, Conservative prototype response, and every fine-stage response before returning a plan. Feasible exact-bin Conservative layouts also consider the preceding critical `H=K` grid, avoiding oversampling when that grid and the requested frame batch both fit. Hop shortlisting happens only after block feasibility, so a forced frame count cannot hide a valid smaller hop. Until a target-hardware benchmark profile exists, the plan contains a warning and `BenchmarkProfileKey` remains null. Supplying all three PFB shape hints is a deterministic override.
 
 PFB prototype design defaults to `PfbPrototypeDesignMode.Conservative`. A measured
 `PfbPrototypeDesignMode.FoldAware` mode can be requested explicitly through
@@ -70,7 +70,7 @@ On the named Ryzen 5 8500G/.NET 10.0.11/FFTW 3.3.5 target profile, FoldAware PFB
 configuration with zero managed allocations; FDC sustained 8.02 MS/s. These are retained,
 configuration-specific results, not a portable realtime guarantee.
 
-The fine stage selects a per-channel power-of-two factor that divides the frame batch. A real per-channel FIR is retained even when that factor is one, unless the requested stop edge is at or beyond the coarse Nyquist boundary. Channels sharing a coarse bin reuse one gathered stream before independent residual rotation, filtering, and decimation; FIR startup state is represented by the resolved group-delay metadata.
+The fine stage selects a per-channel power-of-two factor that divides the frame batch. An exact-bin, factor-one Conservative channel bypasses the fine FIR only when the validated shared prototype already satisfies that channel; FoldAware and residual-offset channels retain their per-channel filter. Zero-residual filtered routes also skip the rotation buffer. Channels sharing a coarse bin reuse one gathered stream before independent residual rotation, filtering, and decimation; FIR startup state is represented by the resolved group-delay metadata.
 
 `ResolvedChannelizerPlan` contains immutable engine and per-channel rates, FFT/PFB dimensions, exact output counts, group delay, and the first-output offset in input-sample units. The offset is relative to `firstNewSampleIndex`: for the causal symmetric FDC FIR it is `-GroupDelayInputSamples`; for the PFB prototype it is `HopSize - 1 - GroupDelayInputSamples`.
 

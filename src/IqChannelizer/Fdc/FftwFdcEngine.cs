@@ -8,7 +8,6 @@ namespace IqChannelizer.Fdc;
 internal sealed class FftwFdcEngine : StreamingEngineBase
 {
     private readonly FftwComplexPlan _forwardPlan;
-    private readonly ComplexF[] _spectrum;
     private readonly InverseGroup[] _inverseGroups;
     private readonly ComplexF[][] _outputs;
     private readonly FdcChannelDesign[] _channelDesigns;
@@ -25,7 +24,6 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
         _simdBackend = simdBackend;
         var transformLength = InputRequirements.InputSize;
         _forwardPlan = new FftwComplexPlan(transformLength, 1, FftwNative.Forward);
-        _spectrum = new ComplexF[transformLength];
         _inverseGroups = plan.Channels
             .Select((channel, index) => (channel.DecimationFactor, ChannelIndex: index))
             .GroupBy(item => item.DecimationFactor)
@@ -49,7 +47,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
         var fftStartedAt = Diagnostics.BeginTiming();
         try
         {
-            _forwardPlan.ExecuteFromInput(_spectrum);
+            _forwardPlan.ExecuteFromInput();
         }
         catch
         {
@@ -87,7 +85,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
                 if (_simdBackend == SimdPreference.Avx512)
                 {
                     SpectralSliceExtractor.ExtractAvx512Unchecked(
-                        _spectrum,
+                        _forwardPlan.Output,
                         channel.CoarseBin,
                         _channelDesigns[channelIndex].SpectralWindow,
                         blockPhase,
@@ -96,7 +94,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
                 else if (_simdBackend == SimdPreference.Avx2)
                 {
                     SpectralSliceExtractor.ExtractAvx2Unchecked(
-                        _spectrum,
+                        _forwardPlan.Output,
                         channel.CoarseBin,
                         _channelDesigns[channelIndex].SpectralWindow,
                         blockPhase,
@@ -105,7 +103,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
                 else
                 {
                     SpectralSliceExtractor.ExtractUnchecked(
-                        _spectrum,
+                        _forwardPlan.Output,
                         channel.CoarseBin,
                         _channelDesigns[channelIndex].SpectralWindow,
                         blockPhase,
@@ -121,7 +119,7 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
             fftStartedAt = Diagnostics.BeginTiming();
             try
             {
-                group.BackwardPlan.ExecuteFromInput(group.Output);
+                group.BackwardPlan.ExecuteFromInput();
             }
             catch
             {
@@ -141,7 +139,9 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
             {
                 var channelIndex = group.ChannelIndices[groupChannelIndex];
                 var channel = Plan.Channels[channelIndex];
-                var inverseOutput = group.Output.AsSpan(groupChannelIndex * group.ShortLength, group.ShortLength);
+                var inverseOutput = group.BackwardPlan.Output.Slice(
+                    groupChannelIndex * group.ShortLength,
+                    group.ShortLength);
                 var destination = _outputs[channelIndex].AsSpan();
                 for (var index = 0; index < destination.Length; index++)
                 {
@@ -188,7 +188,6 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
             ShortLength = transformLength / decimation;
             Discard = historySize / decimation;
             BackwardPlan = new FftwComplexPlan(ShortLength, channelIndices.Length, FftwNative.Backward);
-            Output = new ComplexF[checked(ShortLength * channelIndices.Length)];
         }
 
         public int Decimation { get; }
@@ -196,6 +195,5 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
         public int ShortLength { get; }
         public int Discard { get; }
         public FftwComplexPlan BackwardPlan { get; }
-        public ComplexF[] Output { get; }
     }
 }

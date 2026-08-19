@@ -114,14 +114,153 @@ public sealed class PfbPlannerTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(engine.Plan.FftSize, Is.EqualTo(64));
-            Assert.That(engine.Plan.HopSize, Is.EqualTo(33));
+            Assert.That(engine.Plan.FftSize, Is.EqualTo(32));
+            Assert.That(engine.Plan.HopSize, Is.EqualTo(32));
             Assert.That(engine.Plan.Channels.Single().CoarseOutputSampleRateHz,
                 Is.GreaterThanOrEqualTo(30));
-            Assert.That(engine.InputRequirements.ChunkSize, Is.EqualTo(132));
+            Assert.That(engine.InputRequirements.ChunkSize, Is.EqualTo(128));
             Assert.That(finalSink!.Blocks.Single().Samples
                 .All(sample => Math.Abs(sample.Magnitude - 0.75) < 4e-4), Is.True);
         });
+    }
+
+    [Test]
+    public void ForcedFramesDoNotHideAFeasibleLowerHopBehindTheHopShortlist()
+    {
+        var request = new ChannelizerRequest(
+            SampleRate,
+            [new ChannelRequest(1, 128, 20, 10, 50, 0.2)],
+            ChannelizerStrategy.Pfb,
+            new InputBlockConstraints(128, 128),
+            new ChannelizerImplementationHints(
+                PfbFftSize: 64,
+                PfbFramesPerBatch: 8,
+                Simd: SimdPreference.Scalar));
+
+        using var engine = ChannelizerFactory.Create(request);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(engine.Plan.FftSize, Is.EqualTo(64));
+            Assert.That(engine.Plan.HopSize, Is.EqualTo(16));
+            Assert.That(engine.Plan.FramesPerBatch, Is.EqualTo(8));
+            Assert.That(engine.InputRequirements.ChunkSize, Is.EqualTo(128));
+        });
+    }
+
+    [Test]
+    public void AutomaticPlannerUsesCriticalPrototypeOnlyPathForBinAlignedChannels()
+    {
+        var request = new ChannelizerRequest(
+            SampleRate,
+            [
+                new ChannelRequest(1, 0, 20, 10, 50, 0.2),
+                new ChannelRequest(2, 128, 20, 10, 50, 0.2),
+                new ChannelRequest(3, -256, 20, 10, 50, 0.2)
+            ],
+            ChannelizerStrategy.Pfb,
+            new InputBlockConstraints(128, 128),
+            new ChannelizerImplementationHints(Simd: SimdPreference.Scalar));
+
+        using var channelizer = ChannelizerFactory.Create(request);
+        var engine = (FftwPfbEngine)channelizer;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(engine.Plan.FftSize, Is.EqualTo(32));
+            Assert.That(engine.Plan.HopSize, Is.EqualTo(32));
+            Assert.That(engine.Plan.FramesPerBatch, Is.EqualTo(4));
+            Assert.That(engine.Plan.OversamplingRatio, Is.EqualTo(new RationalSampleOffset(1, 1)));
+            Assert.That(engine.Plan.Channels.Select(channel => channel.FineFilterId),
+                Is.All.EqualTo("Identity"));
+            Assert.That(engine.PrototypeOnlyChannelCount, Is.EqualTo(3));
+            Assert.That(engine.RotationChannelCount, Is.Zero);
+        });
+    }
+
+    [Test]
+    public void CriticalTargetRequiresTheForcedFrameBatchToFit()
+    {
+        var request = new ChannelizerRequest(
+            SampleRate,
+            [new ChannelRequest(1, 128, 20, 10, 50, 0.2)],
+            ChannelizerStrategy.Pfb,
+            new InputBlockConstraints(128, 128),
+            new ChannelizerImplementationHints(
+                PfbFramesPerBatch: 8,
+                Simd: SimdPreference.Scalar));
+
+        using var engine = ChannelizerFactory.Create(request);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(engine.Plan.FftSize, Is.EqualTo(64));
+            Assert.That(engine.Plan.HopSize, Is.EqualTo(16));
+            Assert.That(engine.Plan.FramesPerBatch, Is.EqualTo(8));
+            Assert.That(engine.Plan.OversamplingRatio, Is.EqualTo(new RationalSampleOffset(4, 1)));
+            Assert.That(engine.Plan.Channels.Single().FineFilterId, Does.StartWith("KaiserFineD"));
+        });
+    }
+
+    [Test]
+    public void CriticalPrototypeOnlyPathStillEnforcesTheRequestedStopband()
+    {
+        var request = new ChannelizerRequest(
+            SampleRate,
+            [new ChannelRequest(7, 128, 20, 10, 50, 0.2)],
+            ChannelizerStrategy.Pfb,
+            new InputBlockConstraints(128, 128),
+            new ChannelizerImplementationHints(Simd: SimdPreference.Scalar));
+
+        var wantedRms = ProcessToneRms(request, 128);
+        var blockerRms = ProcessToneRms(request, 148);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(wantedRms, Is.InRange(0.97, 1.01));
+            Assert.That(blockerRms, Is.LessThan(0.004));
+        });
+    }
+
+    [Test]
+    public void FoldAwareCriticalPlanRetainsItsPerChannelFineFilter()
+    {
+        var request = new ChannelizerRequest(
+            SampleRate,
+            [new ChannelRequest(9, 128, 20, 10, 50, 0.2)],
+            ChannelizerStrategy.Pfb,
+            new InputBlockConstraints(128, 128),
+            new ChannelizerImplementationHints(
+                PfbFftSize: 32,
+                PfbHopSize: 32,
+                PfbFramesPerBatch: 4,
+                Simd: SimdPreference.Scalar,
+                PfbPrototypeDesign: PfbPrototypeDesignMode.FoldAware));
+
+        using var channelizer = ChannelizerFactory.Create(request);
+        var engine = (FftwPfbEngine)channelizer;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(engine.Plan.Channels.Single().FineFilterId, Does.StartWith("KaiserFineD1"));
+            Assert.That(engine.PrototypeOnlyChannelCount, Is.Zero);
+            Assert.That(engine.RotationChannelCount, Is.Zero);
+        });
+    }
+
+    private static double ProcessToneRms(ChannelizerRequest request, double frequencyHz)
+    {
+        using var engine = ChannelizerFactory.Create(request);
+        const long firstNew = 10_003;
+        var input = DeterministicSignals.Tone(
+            engine.InputRequirements.InputSize,
+            frequencyHz,
+            request.InputSampleRateHz,
+            firstNew - engine.InputRequirements.HistorySize);
+        var sink = new TestSink();
+        engine.Process(input, firstNew, sink);
+        var samples = sink.Blocks.Single().Samples;
+        return Math.Sqrt(samples.Average(sample => sample.Magnitude * sample.Magnitude));
     }
 
     private static ChannelizerRequest AutomaticRequest() => new(

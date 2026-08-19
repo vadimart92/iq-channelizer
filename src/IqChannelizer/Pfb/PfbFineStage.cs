@@ -9,12 +9,18 @@ internal sealed record PfbFineStageDesign(
     RationalSampleOffset GroupDelayCoarseSamples,
     AliasedResponseResult AliasedResponse)
 {
-    public string FilterId => Taps.Length == 1 ? "Identity" : $"KaiserFineD{DecimationFactor}Order{Taps.Length - 1}";
+    public string FilterId => DecimationFactor == 1 && Taps.Length == 1 && Taps[0] == 1f
+        ? "Identity"
+        : $"KaiserFineD{DecimationFactor}Order{Taps.Length - 1}";
 }
 
 internal static class PfbFineStageDesigner
 {
-    public static PfbFineStageDesign Design(ChannelRequest channel, double coarseSampleRateHz, int framesPerBatch)
+    public static PfbFineStageDesign Design(
+        ChannelRequest channel,
+        double coarseSampleRateHz,
+        int framesPerBatch,
+        bool prototypeAloneSatisfiesChannel = false)
     {
         var targetRate = Math.Max(
             channel.PassbandWidthHz + channel.TransitionWidthHz,
@@ -32,12 +38,12 @@ internal static class PfbFineStageDesigner
         }
 
         var stopbandEdge = (channel.PassbandWidthHz + channel.TransitionWidthHz) / 2;
-        if (factor == 1 && stopbandEdge >= coarseSampleRateHz / 2)
+        if (factor == 1 && (prototypeAloneSatisfiesChannel || stopbandEdge >= coarseSampleRateHz / 2))
         {
-            // There is no representable stopband above this edge at the coarse
-            // rate. In every other D=1 case a real per-channel filter is still
-            // required: the shared prototype is centered on the coarse bin and
-            // can be wider or asymmetrically placed after residual rotation.
+            // Either the aligned Conservative prototype was proven to satisfy
+            // this channel by itself, or there is no representable stopband
+            // above the requested edge at the coarse rate. Every other D=1 case
+            // retains a real per-channel filter.
             return new PfbFineStageDesign(
                 1,
                 [1f],
@@ -74,6 +80,7 @@ internal sealed class StreamingFineDecimator
 {
     private readonly int _factor;
     private readonly float[] _taps;
+    private readonly bool _isIdentity;
     private readonly ComplexF[] _history;
     private readonly ComplexF[] _buffer;
 
@@ -81,12 +88,31 @@ internal sealed class StreamingFineDecimator
     {
         _factor = design.DecimationFactor;
         _taps = design.Taps;
+        _isIdentity = _factor == 1 && _taps.Length == 1 && _taps[0] == 1f;
+        if (_isIdentity)
+        {
+            _history = [];
+            _buffer = [];
+            return;
+        }
+
         _history = new ComplexF[_taps.Length - 1];
         _buffer = new ComplexF[checked(_history.Length + inputCount)];
     }
 
     public void Process(ReadOnlySpan<ComplexF> input, Span<ComplexF> output)
     {
+        if (_isIdentity)
+        {
+            if (output.Length != input.Length)
+            {
+                throw new ArgumentException("Identity fine-stage output must match its input length.");
+            }
+
+            input.CopyTo(output);
+            return;
+        }
+
         if (input.Length + _history.Length != _buffer.Length || output.Length != input.Length / _factor)
         {
             throw new ArgumentException("Fine-decimator block shape does not match its resolved plan.");

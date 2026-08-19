@@ -13,6 +13,27 @@ public sealed class PfbProductionFlowTests
     private const int Frames = 8;
 
     [Test]
+    public void AOneTapGainIsNotMisclassifiedAsTheIdentityRoute()
+    {
+        var design = new PfbFineStageDesign(
+            1,
+            [0.5f],
+            new RationalSampleOffset(0, 1),
+            default);
+        var decimator = new StreamingFineDecimator(design, inputCount: 2);
+        ComplexF[] input = [new(2, -4), new(6, 8)];
+        var output = new ComplexF[2];
+
+        decimator.Process(input, output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(design.FilterId, Is.EqualTo("KaiserFineD1Order0"));
+            Assert.That(output, Is.EqualTo(new ComplexF[] { new(1, -2), new(3, 4) }));
+        });
+    }
+
+    [Test]
     public void SharedBinFanOutAndDifferentFineDecimationsMatchIndependentDdc()
     {
         var request = Request();

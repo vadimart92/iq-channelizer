@@ -6,6 +6,7 @@ The existing benchmark project uses BenchmarkDotNet 0.15.8 and contains these fa
 - `FftwBenchmarks`: single-precision forward transform execution;
 - `PfbFirBenchmarks`: scalar versus AVX2 and AVX-512 phase-parallel direct-store FIR kernels;
 - `PfbPrototypeBenchmarks`: Conservative versus explicit FoldAware end-to-end PFB processing;
+- `AlignedCriticalPfbBenchmarks`: aligned Conservative `H=K` prototype-only processing versus the corresponding oversampled shape;
 - `PfbSelectedBinBenchmarks`: FFTW+gather versus scalar/AVX2/AVX-512 direct-DFT crossover;
 - `FdcExtractionBenchmarks`: scalar versus AVX2 and AVX-512 complex-window extraction;
 - `ResidualRotatorBenchmarks`: measured scalar versus AVX2 residual rotation;

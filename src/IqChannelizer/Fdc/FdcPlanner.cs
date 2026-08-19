@@ -10,11 +10,19 @@ internal sealed record FdcLayout(
 
 internal static class FdcPlanner
 {
+    private readonly record struct TapDesignKey(
+        double PassbandWidthHz,
+        double TransitionWidthHz,
+        double StopbandAttenuationDb,
+        double PassbandRippleDb,
+        int Decimation);
+
     public static FdcLayout CreateLayout(ChannelizerRequest request)
     {
         var constraints = request.InputBlocks ?? new InputBlockConstraints();
         var decimations = new int[request.Channels.Count];
         var taps = new float[request.Channels.Count][];
+        var tapDesigns = new Dictionary<TapDesignKey, float[]>();
         var maximumDecimation = 1;
         for (var index = 0; index < request.Channels.Count; index++)
         {
@@ -26,7 +34,22 @@ internal static class FdcPlanner
             ValidateOutputRate(channel, request.InputSampleRateHz / decimation);
             decimations[index] = decimation;
             maximumDecimation = Math.Max(maximumDecimation, decimation);
-            taps[index] = FdcFilterDesign.DesignAlignedTaps(channel, request.InputSampleRateHz, decimation);
+            var key = new TapDesignKey(
+                channel.PassbandWidthHz,
+                channel.TransitionWidthHz,
+                channel.StopbandAttenuationDb,
+                channel.PassbandRippleDb,
+                decimation);
+            if (!tapDesigns.TryGetValue(key, out var channelTaps))
+            {
+                channelTaps = FdcFilterDesign.DesignAlignedTaps(
+                    channel,
+                    request.InputSampleRateHz,
+                    decimation);
+                tapDesigns.Add(key, channelTaps);
+            }
+
+            taps[index] = channelTaps;
         }
 
         var maximumOrder = taps.Max(filter => filter.Length - 1);

@@ -10,6 +10,23 @@ namespace IqChannelizer;
 
 public static class ChannelizerFactory
 {
+    private readonly record struct FdcDesignKey(
+        double PassbandWidthHz,
+        double TransitionWidthHz,
+        double StopbandAttenuationDb,
+        double PassbandRippleDb,
+        int Decimation,
+        double ResidualFrequencyHz);
+
+    private readonly record struct PartitionedFdcDesignKey(
+        double PassbandWidthHz,
+        double TransitionWidthHz,
+        double StopbandAttenuationDb,
+        double PassbandRippleDb,
+        int Decimation,
+        double ResidualFrequencyHz,
+        bool OddCoarseBin);
+
     public static IStreamingChannelizer Create(ChannelizerRequest request)
     {
         RequestValidator.Validate(request);
@@ -44,25 +61,55 @@ public static class ChannelizerFactory
         var requirements = layout.InputRequirements;
         var history = requirements.HistorySize;
         var chunk = requirements.ChunkSize;
-        var transformLength = requirements.InputSize;
+        var usePartitionedOverlapSave = history >= checked(2 * chunk);
+        var transformLength = usePartitionedOverlapSave
+            ? checked(2 * chunk)
+            : requirements.InputSize;
         var channels = ResolveFdcChannels(request, layout.Decimations, transformLength, chunk, history);
+        if (usePartitionedOverlapSave)
+        {
+            return CreatePartitionedFdc(
+                request,
+                strategySelection,
+                layout,
+                channels,
+                simdBackend,
+                transformLength);
+        }
+
         var designs = new FdcChannelDesign[channels.Count];
+        var completedDesigns = new Dictionary<FdcDesignKey, FdcChannelDesign>();
         for (var index = 0; index < designs.Length; index++)
         {
-            var channelTaps = PadFilterToHistory(layout.Taps[index], history);
-            designs[index] = FdcFilterDesign.Complete(
-                request.Channels[index],
-                channelTaps,
-                request.InputSampleRateHz,
+            var requested = request.Channels[index];
+            var key = new FdcDesignKey(
+                requested.PassbandWidthHz,
+                requested.TransitionWidthHz,
+                requested.StopbandAttenuationDb,
+                requested.PassbandRippleDb,
                 layout.Decimations[index],
-                transformLength,
                 channels[index].ResidualFrequencyHz);
+            if (!completedDesigns.TryGetValue(key, out var design))
+            {
+                var channelTaps = PadFilterToHistory(layout.Taps[index], history);
+                design = FdcFilterDesign.Complete(
+                    requested,
+                    channelTaps,
+                    request.InputSampleRateHz,
+                    layout.Decimations[index],
+                    transformLength,
+                    channels[index].ResidualFrequencyHz);
+                completedDesigns.Add(key, design);
+            }
+
+            designs[index] = design;
         }
 
         var sumShortLengths = channels.Sum(channel => (long)channel.ShortInverseFftLength!.Value);
         var outputValues = channels.Sum(channel => (long)channel.OutputSamplesPerProcess);
         var nativeBytes = checked(16L * (transformLength + sumShortLengths));
-        var workingSetBytes = checked(nativeBytes + (8L * transformLength) + (16L * sumShortLengths) + (8L * outputValues));
+        var uniqueWindowValues = completedDesigns.Values.Sum(design => (long)design.SpectralWindow.Length);
+        var workingSetBytes = checked(nativeBytes + (8L * uniqueWindowValues) + (8L * outputValues));
         var plan = new ResolvedChannelizerPlan
         {
             Strategy = ChannelizerStrategy.Fdc,
@@ -90,6 +137,92 @@ public static class ChannelizerFactory
             BenchmarkProfileKey = strategySelection?.ProfileKey
         };
         return new FftwFdcEngine(plan, designs, simdBackend, request.Hints?.Diagnostics ?? DiagnosticsMode.Disabled);
+    }
+
+    private static IStreamingChannelizer CreatePartitionedFdc(
+        ChannelizerRequest request,
+        StrategySelection? strategySelection,
+        FdcLayout layout,
+        IReadOnlyList<ResolvedChannelPlan> channels,
+        SimdPreference simdBackend,
+        int transformLength)
+    {
+        var requirements = layout.InputRequirements;
+        var history = requirements.HistorySize;
+        var chunk = requirements.ChunkSize;
+        var designs = new PartitionedFdcChannelDesign[channels.Count];
+        var completedDesigns = new Dictionary<PartitionedFdcDesignKey, PartitionedFdcChannelDesign>();
+        for (var index = 0; index < designs.Length; index++)
+        {
+            var requested = request.Channels[index];
+            var channel = channels[index];
+            var key = new PartitionedFdcDesignKey(
+                requested.PassbandWidthHz,
+                requested.TransitionWidthHz,
+                requested.StopbandAttenuationDb,
+                requested.PassbandRippleDb,
+                layout.Decimations[index],
+                channel.ResidualFrequencyHz,
+                (channel.CoarseBin & 1) != 0);
+            if (!completedDesigns.TryGetValue(key, out var design))
+            {
+                var channelTaps = PadFilterToHistory(layout.Taps[index], history);
+                design = PartitionedFdcFilterDesign.Complete(
+                    requested,
+                    channelTaps,
+                    request.InputSampleRateHz,
+                    layout.Decimations[index],
+                    chunk,
+                    channel.CoarseBin,
+                    channel.ResidualFrequencyHz);
+                completedDesigns.Add(key, design);
+            }
+
+            designs[index] = design;
+        }
+
+        var partitionCount = checked((history + 1 + chunk - 1) / chunk);
+        var sumShortLengths = channels.Sum(channel => (long)channel.ShortInverseFftLength!.Value);
+        var outputValues = channels.Sum(channel => (long)channel.OutputSamplesPerProcess);
+        var nativeBytes = checked(16L * (transformLength + sumShortLengths));
+        var ringValues = checked((long)partitionCount * transformLength);
+        var uniqueWindowValues = completedDesigns.Values.Sum(design =>
+            design.PartitionSpectralWindows.Sum(window => (long)window.Length));
+        var workingSetBytes = checked(
+            nativeBytes + (8L * ringValues) + (8L * uniqueWindowValues) + (8L * outputValues));
+        var plan = new ResolvedChannelizerPlan
+        {
+            Strategy = ChannelizerStrategy.Fdc,
+            InputSampleRateHz = request.InputSampleRateHz,
+            InputRequirements = requirements,
+            Channels = channels,
+            DspBackend = simdBackend switch
+            {
+                SimdPreference.Avx512 =>
+                    $"FFTW {FftwRuntime.Info.Version} partitioned overlap-save with AVX-512F accumulation",
+                SimdPreference.Avx2 =>
+                    $"FFTW {FftwRuntime.Info.Version} partitioned overlap-save with AVX2/FMA accumulation",
+                _ => $"FFTW {FftwRuntime.Info.Version} partitioned overlap-save with scalar accumulation"
+            },
+            SelectedSimdBackend = simdBackend,
+            ChunkAlignment = layout.MaximumDecimation,
+            FftwThreadCount = 1,
+            AlignedBufferBytes = nativeBytes,
+            EstimatedWorkingSetBytes = workingSetBytes,
+            Warnings = Array.AsReadOnly(channels.Select(channel => channel.Warning)
+                .Where(warning => warning is not null)
+                .Select(warning => warning!)
+                .Concat(strategySelection is null ? [] : [strategySelection.Explanation])
+                .ToArray()),
+            FftSize = transformLength,
+            FilterDesignMode = "KaiserConservativePartitionedOverlapSave",
+            BenchmarkProfileKey = strategySelection?.ProfileKey
+        };
+        return new PartitionedFftwFdcEngine(
+            plan,
+            designs,
+            simdBackend,
+            request.Hints?.Diagnostics ?? DiagnosticsMode.Disabled);
     }
 
     private static IReadOnlyList<ResolvedChannelPlan> ResolveFdcChannels(
@@ -189,9 +322,25 @@ public static class ChannelizerFactory
         var simdCoefficientBytes = simdBackend is SimdPreference.Avx2 or SimdPreference.Avx512
             ? 8L * prototype.Taps.Length
             : 0;
-        var workingSetBytes = checked(nativeBytes + (16L * transformValues) +
-                                       (24L * frames * channels.Length) + (4L * prototype.Taps.Length) +
-                                       fineStages.Sum(stage => 16L * stage.Taps.Length) + simdCoefficientBytes);
+        var uniqueBinCount = channels.Select(channel => channel.CoarseBin).Distinct().Count();
+        var rotationChannelCount = channels.Count(channel => channel.ResidualFrequencyHz != 0);
+        var routeBytes = checked(4L * (uniqueBinCount + channels.Length));
+        var streamBytes = checked(8L * frames * (uniqueBinCount + rotationChannelCount));
+        var outputBytes = checked(8L * channels.Sum(channel => (long)channel.OutputSamplesPerProcess));
+        var fineTapBytes = checked(4L * fineStages.Sum(stage => (long)stage.Taps.Length));
+        var fineStateBytes = fineStages.Sum(stage =>
+            stage.DecimationFactor == 1 && stage.Taps.Length == 1 && stage.Taps[0] == 1f
+                ? 0L
+                : checked((16L * (stage.Taps.Length - 1)) + (8L * frames)));
+        var workingSetBytes = checked(
+            nativeBytes +
+            (4L * prototype.Taps.Length) +
+            simdCoefficientBytes +
+            routeBytes +
+            streamBytes +
+            outputBytes +
+            fineTapBytes +
+            fineStateBytes);
         var plan = new ResolvedChannelizerPlan
         {
             Strategy = ChannelizerStrategy.Pfb,

@@ -163,8 +163,8 @@ public sealed class ContractTests
             Assert.That(resolved.StopbandAttenuationDb, Is.EqualTo(75));
             Assert.That(engine.InputRequirements.HistorySize, Is.GreaterThan(0));
             Assert.That(engine.InputRequirements.HistorySize % 2, Is.Zero);
-            Assert.That(engine.Plan.FftSize, Is.EqualTo(engine.InputRequirements.InputSize));
-            Assert.That(resolved.ShortInverseFftLength, Is.EqualTo(engine.InputRequirements.InputSize / 2));
+            Assert.That(engine.Plan.FftSize, Is.EqualTo(2 * engine.InputRequirements.ChunkSize));
+            Assert.That(resolved.ShortInverseFftLength, Is.EqualTo(engine.Plan.FftSize / 2));
             Assert.That(resolved.OutputSamplesPerProcess, Is.EqualTo(8));
             Assert.That(resolved.FirstOutputInputSampleOffset,
                 Is.EqualTo(new RationalSampleOffset(-engine.InputRequirements.HistorySize, 2)));

@@ -1,10 +1,10 @@
 using IqChannelizer.Abstractions;
 using IqChannelizer.Dsp;
+using IqChannelizer.Fftw;
 
 namespace IqChannelizer.Fdc;
 
 internal sealed record FdcChannelDesign(
-    float[] Taps,
     ComplexF[] SpectralWindow,
     AliasedResponseResult AliasedResponse);
 
@@ -48,18 +48,61 @@ internal static class FdcFilterDesign
         double residualFrequencyHz)
     {
         var shortLength = transformLength / decimation;
+        if (taps.Length > transformLength)
+        {
+            throw new ArgumentException("FDC taps must fit in the overlap-save transform.", nameof(taps));
+        }
+
+        var aliased = ValidateAliasedResponse(channel, taps, inputSampleRateHz, decimation);
+
+        // Sampling H(f) independently for every short-IFFT bin is O(taps * bins)
+        // and dominates initialization for large-D filters. A single FFT of
+        // h[n] * exp(+j*2*pi*residual*n/Fs) yields exactly H(f-residual) on the
+        // transform grid, including the phase from engine-wide zero padding.
+        using var responsePlan = new FftwComplexPlan(transformLength, 1, FftwNative.Forward);
+        var responseInput = responsePlan.WritableInput;
+        responseInput.Clear();
+        if (residualFrequencyHz == 0)
+        {
+            for (var index = 0; index < taps.Length; index++)
+            {
+                responseInput[index] = new ComplexF(taps[index], 0);
+            }
+        }
+        else
+        {
+            var radiansPerSample = 2 * Math.PI * residualFrequencyHz / inputSampleRateHz;
+            for (var index = 0; index < taps.Length; index++)
+            {
+                var (sine, cosine) = Math.SinCos(radiansPerSample * index);
+                responseInput[index] = new ComplexF(
+                    (float)(taps[index] * cosine),
+                    (float)(taps[index] * sine));
+            }
+        }
+
+        responsePlan.ExecuteFromInput();
+        var spectrum = responsePlan.Output;
         var window = new ComplexF[shortLength];
         for (var shortBin = 0; shortBin < shortLength; shortBin++)
         {
             var signedOffset = shortBin <= shortLength / 2 ? shortBin : shortBin - shortLength;
-            var frequency = WrapFrequency(
-                (signedOffset * inputSampleRateHz / transformLength) - residualFrequencyHz,
-                inputSampleRateHz);
-            var response = FrequencyResponseEvaluator.Evaluate(taps, frequency, inputSampleRateHz);
-            window[shortBin] = new ComplexF((float)response.Real, (float)response.Imaginary);
+            window[shortBin] = spectrum[FrequencyBinMath.Mod(signedOffset, transformLength)];
         }
 
-        var dense = FrequencyResponseEvaluator.EvaluateDenseConservative(taps, inputSampleRateHz, DenseResponsePoints);
+        return new FdcChannelDesign(window, aliased);
+    }
+
+    internal static AliasedResponseResult ValidateAliasedResponse(
+        ChannelRequest channel,
+        ReadOnlySpan<float> taps,
+        double inputSampleRateHz,
+        int decimation)
+    {
+        var dense = FrequencyResponseEvaluator.EvaluateDenseConservative(
+            taps,
+            inputSampleRateHz,
+            DenseResponsePoints);
         var aliased = AliasedResponseEvaluator.EvaluateConservative(
             dense,
             decimation,
@@ -71,12 +114,6 @@ internal static class FdcFilterDesign
                 $"FDC filter for channel {channel.ChannelId} achieves only {aliased.WorstAliasAttenuationDb:R} dB conservative folded attenuation.");
         }
 
-        return new FdcChannelDesign(taps, window, aliased);
-    }
-
-    private static double WrapFrequency(double frequencyHz, double sampleRateHz)
-    {
-        var wrapped = frequencyHz - (Math.Floor((frequencyHz + (sampleRateHz / 2)) / sampleRateHz) * sampleRateHz);
-        return wrapped < -sampleRateHz / 2 ? wrapped + sampleRateHz : wrapped;
+        return aliased;
     }
 }

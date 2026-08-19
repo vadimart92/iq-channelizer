@@ -24,7 +24,7 @@ public sealed class FdcPlannerTests
             new InputBlockConstraints(64, 64),
             new ChannelizerImplementationHints(Simd: SimdPreference.Scalar));
         using var channelizer = ChannelizerFactory.Create(request);
-        var engine = (FftwFdcEngine)channelizer;
+        var engine = channelizer;
         var history = engine.InputRequirements.HistorySize;
         const long firstNew = 509;
         var frameStart = firstNew - history;
@@ -45,11 +45,13 @@ public sealed class FdcPlannerTests
             Assert.That(engine.Plan.Channels.Select(channel => channel.DecimationFactor), Is.EqualTo(new[] { 8, 2 }));
             Assert.That(engine.Plan.Channels.Select(channel => channel.OutputSamplesPerProcess), Is.EqualTo(new[] { 8, 32 }));
             Assert.That(engine.Plan.Channels.Select(channel => channel.ShortInverseFftLength),
-                Is.EqualTo(new int?[] { engine.InputRequirements.InputSize / 8, engine.InputRequirements.InputSize / 2 }));
+                Is.EqualTo(new int?[] { engine.Plan.FftSize / 8, engine.Plan.FftSize / 2 }));
             Assert.That(engine.Plan.ChunkAlignment, Is.EqualTo(8));
             Assert.That(history % 8, Is.Zero);
-            Assert.That(engine.InverseGroupCount, Is.EqualTo(2));
-            Assert.That(engine.ForwardTransformExecutionCount, Is.EqualTo(1));
+            Assert.That(engine, Is.TypeOf<PartitionedFftwFdcEngine>());
+            Assert.That(((PartitionedFftwFdcEngine)engine).InverseGroupCount, Is.EqualTo(2));
+            Assert.That(((PartitionedFftwFdcEngine)engine).ForwardTransformExecutionCount,
+                Is.EqualTo(((PartitionedFftwFdcEngine)engine).PartitionCount));
             Assert.That(sink.Blocks.Select(block => block.ChannelId), Is.EqualTo(new[] { 101, 202 }));
         });
 

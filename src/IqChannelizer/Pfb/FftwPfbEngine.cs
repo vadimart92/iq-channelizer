@@ -14,7 +14,6 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
     private readonly Avx2PfbCoefficients? _avx2Coefficients;
     private readonly Avx512PfbCoefficients? _avx512Coefficients;
     private readonly FftwComplexPlan _backwardPlan;
-    private readonly ComplexF[] _fftOutput;
     private readonly int[] _uniqueBins;
     private readonly int[] _channelRoutes;
     private readonly ComplexF[][] _coarseStreams;
@@ -44,16 +43,22 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
             ? new Avx512PfbCoefficients(prototype, fftSize)
             : null;
         _backwardPlan = new FftwComplexPlan(fftSize, frames, FftwNative.Backward);
-        _fftOutput = new ComplexF[checked(fftSize * frames)];
         _uniqueBins = plan.Channels.Select(channel => channel.CoarseBin).Distinct().ToArray();
         _channelRoutes = plan.Channels.Select(channel => Array.IndexOf(_uniqueBins, channel.CoarseBin)).ToArray();
         _coarseStreams = _uniqueBins.Select(_ => new ComplexF[frames]).ToArray();
-        _rotatedStreams = plan.Channels.Select(_ => new ComplexF[frames]).ToArray();
+        _rotatedStreams = plan.Channels
+            .Select(channel => channel.ResidualFrequencyHz == 0 ? [] : new ComplexF[frames])
+            .ToArray();
         _fineDecimators = fineStageDesigns.Select(design => new StreamingFineDecimator(design, frames)).ToArray();
         _outputs = plan.Channels.Select(channel => new ComplexF[channel.OutputSamplesPerProcess]).ToArray();
+        RotationChannelCount = plan.Channels.Count(channel => channel.ResidualFrequencyHz != 0);
+        PrototypeOnlyChannelCount = fineStageDesigns.Count(
+            design => design.DecimationFactor == 1 && design.Taps.Length == 1 && design.Taps[0] == 1f);
     }
 
     internal int UniqueBinCount => _uniqueBins.Length;
+    internal int RotationChannelCount { get; }
+    internal int PrototypeOnlyChannelCount { get; }
     internal long GatheredBinValueCount { get; private set; }
 
     protected override void ProcessCore(ReadOnlySpan<ComplexF> input, long firstNewSampleIndex, IChannelOutputSink output)
@@ -104,7 +109,7 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         var fftStartedAt = Diagnostics.BeginTiming();
         try
         {
-            _backwardPlan.ExecuteFromInput(_fftOutput);
+            _backwardPlan.ExecuteFromInput();
         }
         catch
         {
@@ -122,7 +127,7 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         var channelStartedAt = Diagnostics.BeginTiming();
         for (var frame = 0; frame < _frames; frame++)
         {
-            var bins = _fftOutput.AsSpan(frame * _fftSize, _fftSize);
+            var bins = _backwardPlan.Output.Slice(frame * _fftSize, _fftSize);
             for (var uniqueIndex = 0; uniqueIndex < _uniqueBins.Length; uniqueIndex++)
             {
                 _coarseStreams[uniqueIndex][frame] = bins[_uniqueBins[uniqueIndex]];
@@ -133,17 +138,23 @@ internal sealed class FftwPfbEngine : StreamingEngineBase
         for (var channelIndex = 0; channelIndex < Plan.Channels.Count; channelIndex++)
         {
             var channel = Plan.Channels[channelIndex];
-            var rotated = _rotatedStreams[channelIndex].AsSpan();
-            _coarseStreams[_channelRoutes[channelIndex]].CopyTo(rotated);
-            var firstAnchor = firstNewSampleIndex + _hopSize - 1;
-            ScalarRotator.RotateInPlace(
-                rotated,
-                channel.ResidualFrequencyHz,
-                Plan.InputSampleRateHz,
-                firstAnchor,
-                _hopSize);
+            ReadOnlySpan<ComplexF> fineInput = _coarseStreams[_channelRoutes[channelIndex]];
+            if (channel.ResidualFrequencyHz != 0)
+            {
+                var rotated = _rotatedStreams[channelIndex].AsSpan();
+                fineInput.CopyTo(rotated);
+                var firstAnchor = firstNewSampleIndex + _hopSize - 1;
+                ScalarRotator.RotateInPlace(
+                    rotated,
+                    channel.ResidualFrequencyHz,
+                    Plan.InputSampleRateHz,
+                    firstAnchor,
+                    _hopSize);
+                fineInput = rotated;
+            }
+
             var destination = _outputs[channelIndex].AsSpan();
-            _fineDecimators[channelIndex].Process(rotated, destination);
+            _fineDecimators[channelIndex].Process(fineInput, destination);
         }
 
         if (Diagnostics.IsTimingEnabled)

@@ -1,4 +1,5 @@
 using IqChannelizer.Abstractions;
+using IqChannelizer.Fdc;
 
 namespace IqChannelizer.Tests;
 
@@ -72,9 +73,12 @@ public sealed class DiagnosticsTests
 
         if (strategy == ChannelizerStrategy.Fdc)
         {
+            var expectedCopyBytes = engine is PartitionedFftwFdcEngine partitioned
+                ? checked((InitializationCopySamples(partitioned) + engine.Plan.FftSize!.Value) * 8L)
+                : checked(2L * engine.InputRequirements.InputSize * 8);
             Assert.Multiple(() =>
             {
-                Assert.That(snapshot.FdcInputCopyBytes, Is.EqualTo(2L * engine.InputRequirements.InputSize * 8));
+                Assert.That(snapshot.FdcInputCopyBytes, Is.EqualTo(expectedCopyBytes));
                 Assert.That(snapshot.FdcInputCopyElapsedTicks, Is.GreaterThanOrEqualTo(0));
                 Assert.That(snapshot.PfbPolyphaseInputSamples, Is.Zero);
             });
@@ -179,6 +183,23 @@ public sealed class DiagnosticsTests
                 PfbFramesPerBatch: 4,
                 Simd: SimdPreference.Scalar,
                 Diagnostics: diagnostics));
+
+    private static long InitializationCopySamples(PartitionedFftwFdcEngine engine)
+    {
+        var history = engine.InputRequirements.HistorySize;
+        var chunk = engine.InputRequirements.ChunkSize;
+        var inputSize = engine.InputRequirements.InputSize;
+        long total = 0;
+        for (var age = 0; age < engine.PartitionCount; age++)
+        {
+            var sourceOffset = history - ((age + 1) * chunk);
+            var sourceStart = Math.Max(0, sourceOffset);
+            var destinationStart = Math.Max(0, -sourceOffset);
+            total += Math.Min(inputSize - sourceStart, (2 * chunk) - destinationStart);
+        }
+
+        return total;
+    }
 
     private sealed class ChecksumSink : IChannelOutputSink
     {
