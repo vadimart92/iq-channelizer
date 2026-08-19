@@ -1,5 +1,8 @@
 # SigMF Signal Composer
 
+> This tool is a separately developed project. It should not be considered part of
+> IqChannelizer's scope, Definition of Done, acceptance, or release readiness.
+
 Browser-only MVP for composing deterministic complex IQ recordings on a time/frequency canvas and exporting a SigMF 1.2.6 archive.
 
 ## Run

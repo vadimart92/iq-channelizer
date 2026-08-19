@@ -242,6 +242,27 @@ public sealed class FftwTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void IdlePlanCacheIsBounded()
+    {
+        FftwPlanCache.ClearIdle();
+        try
+        {
+            for (var length = 2; length < FftwPlanCache.MaximumIdlePlanCount + 7; length++)
+            {
+                using var plan = new FftwComplexPlan(length, 1, FftwNative.Forward);
+            }
+
+            Assert.That(FftwPlanCache.ActiveLeaseCount, Is.Zero);
+            Assert.That(FftwPlanCache.IdlePlanCount, Is.EqualTo(FftwPlanCache.MaximumIdlePlanCount));
+        }
+        finally
+        {
+            FftwPlanCache.ClearIdle();
+        }
+    }
+
+    [Test]
     public void RepeatedExecutionDoesNotAllocateManagedMemory()
     {
         var input = new ComplexF[32];

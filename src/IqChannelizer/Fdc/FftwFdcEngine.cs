@@ -75,8 +75,10 @@ internal sealed class FftwFdcEngine : StreamingEngineBase
                 var inverseInput = group.Input.AsSpan(groupChannelIndex * group.ShortLength, group.ShortLength);
                 // Local FFT mixing omits the absolute frame origin. This scalar restores it once per block;
                 // the short-IFFT index then supplies the local coarse phase progression.
-                var blockPhase = ComplexF.FromPolar(
-                    -2 * Math.PI * channel.CoarseCenterFrequencyHz * frameStartInputIndex / Plan.InputSampleRateHz);
+                var blockPhase = ScalarRotator.CreatePhasor(
+                    channel.CoarseCenterFrequencyHz,
+                    Plan.InputSampleRateHz,
+                    frameStartInputIndex);
                 SpectralSliceExtractor.Extract(
                     _spectrum,
                     channel.CoarseBin,

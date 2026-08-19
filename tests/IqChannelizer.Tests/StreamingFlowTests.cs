@@ -80,6 +80,33 @@ public sealed class StreamingFlowTests
     }
 
     [Test]
+    public void ResidualMixerRetainsPhaseAtLargeAbsoluteOrigin()
+    {
+        const double frequency = 12_345_678;
+        const double sampleRate = 100_000_000;
+        const long firstAbsoluteIndex = 10_000_000_000_000;
+        var samples = new ComplexF[16];
+        for (var index = 0; index < samples.Length; index++)
+        {
+            var absoluteIndex = firstAbsoluteIndex + index;
+            var phaseCycles = decimal.Remainder(
+                (decimal)frequency * absoluteIndex,
+                (decimal)sampleRate) / (decimal)sampleRate;
+            samples[index] = ComplexF.FromPolar(2 * Math.PI * (double)phaseCycles);
+        }
+
+        IqChannelizer.Dsp.ScalarRotator.RotateInPlace(
+            samples,
+            frequency,
+            sampleRate,
+            firstAbsoluteIndex,
+            inputSamplesPerOutputSample: 1);
+
+        Assert.That(samples.All(value => Math.Abs(value.Real - 1) < 2e-5), Is.True);
+        Assert.That(samples.All(value => Math.Abs(value.Imaginary) < 2e-5), Is.True);
+    }
+
+    [Test]
     public void ProcessEnforcesExactLengthAndContinuity()
     {
         using var engine = ChannelizerFactory.Create(ContractTests.Request(ChannelizerStrategy.Fdc, [ContractTests.Channel(1, 0)]));

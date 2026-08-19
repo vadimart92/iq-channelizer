@@ -275,17 +275,17 @@
 
 ### Крок 15. Завершити facade, docs і Auto останнім
 
-**Статус: частково (ungated facade/docs scope виконано).** Base commit `23b05b0` + uncommitted working tree; 170/170 Release tests.
+**Статус: частково (ungated facade/docs і hardening scope виконано).** Base commit `c7a4477` + current working tree; 175/175 Release tests.
 
 - Завершити public plan inspection, diagnostics, reset/reconfiguration docs і minimal production example.
 - Перевірити Definition of Done і створити acceptance report.
 - Реалізувати `Auto` лише з versioned benchmark profile schema і explainable resolved decision.
-- Оновити FFTW licensing/distribution documentation перед release/publish.
+- Перед release/publish перевірити managed-only NuGet: MIT license присутня, а FFTW DLL/header відсутні.
 
 **Done:** Definition of Done розділу 14 головного плану виконаний, Release tests і benchmarks відтворюються, а `Auto` не використовує неперевірені heuristics.
 
 **Evidence:** `ChannelizerFactory.cs` повертає read-only snapshots для channels і warnings; `ContractTests.ResolvedPlanCollectionsAreImmutableSnapshots` перевіряє обидві strategies та відв’язування від mutable request list. README містить самодостатній request/plan/process/sink example. [`docs/facade.md`](docs/facade.md) фіксує plan inspection, span lifetime, serialized streaming і різницю між `Reset` та створенням нового engine. [`docs/acceptance/report.md`](docs/acceptance/report.md) аудіює кожен пункт Definition of Done і явно відділяє enforced, guarded, deferred та externally blocked gates.
 
-**Design decisions:** in-place reconfiguration не додається: зміна channels/rates/strategy/hints потребує створення та перевірки нового engine поза hot path. `Auto` і SIMD не ввімкнені, бо наявний scalar profile не є versioned comparative strategy/SIMD profile. [`docs/release-policy.md`](docs/release-policy.md) і `IsPackable=false` продовжують блокувати binary release до FFTW license decision.
+**Design decisions:** in-place reconfiguration не додається: зміна channels/rates/strategy/hints потребує створення та перевірки нового engine поза hot path. `Auto` і SIMD не ввімкнені, бо наявний scalar profile не є versioned comparative strategy/SIMD profile. IqChannelizer має MIT license; FFTW 3.3.5 очікувано використовується для локальної відтворюваності, але DLL/header не входитимуть до NuGet. [`docs/release-policy.md`](docs/release-policy.md) і `IsPackable=false` блокують binary release лише до перевірки managed-only package layout.
 
-**Done ще не підтверджено повністю:** загальний Definition of Done містить SIMD, FoldAware comparison, target 100 MS/s realtime evidence, `Auto` profile та release-owner licensing gates. Наступного ungated implementation increment немає; Крок 13 можна починати лише після явного дозволу власника repository.
+**Done ще не підтверджено повністю:** загальний Definition of Done містить SIMD, FoldAware comparison, target 100 MS/s realtime evidence, `Auto` profile та clean-environment consumer validation для managed-only package (локальна перевірка вже підтвердила MIT metadata й відсутність FFTW assets). SigMF generator ведеться окремо й не є gate цього проєкту. Наступний крок 13 можна починати лише після явного дозволу власника repository.

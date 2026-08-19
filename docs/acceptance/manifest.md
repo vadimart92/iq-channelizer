@@ -17,12 +17,12 @@ remains under ignored `TestResults/` and `BenchmarkDotNet.Artifacts/` directorie
 | `FramesPerBatch` does not change the logical PFB stream | Streaming owner | `PfbProductionFlowTests.FramesPerBatchDoesNotChangeLogicalOutput` | Enforced |
 | Per-channel PFB filtering remains active for `Dfine=1` | DSP owner | `PfbProductionFlowTests.FineFactorOneStillAppliesTheRequestedPerChannelFilter` | Enforced |
 | Filter pass/fail checks cannot miss a narrow between-grid peak | DSP owner | adversarial tests in `FilterDesignTests` | Enforced |
+| Absolute oscillator phase remains stable at long stream indices | DSP owner | large-origin cases in `StreamingFlowTests` and `PfbMathTests` | Enforced |
 | FFTW runtime identity, exports, alignment, cache and steady-state allocation contract | Runtime owner | `FftwTests` plus pinned hashes in `docs/fftw-runtime.md` | Enforced |
 | Diagnostics counters, stage timing, fault/reset status and enabled/disabled allocation contract | Runtime owner | `DiagnosticsTests` | Enforced |
 | Unified facade plan snapshots, lifecycle and reconfiguration boundary | Core API owner | `ContractTests.ResolvedPlanCollectionsAreImmutableSnapshots`, `docs/facade.md` | Enforced |
 | Scalar primitive, FFTW, planning, FDC and PFB statistical baseline exists | Performance owner | `artifacts/benchmarks/latest-summary.md`, retained BDN CSV/Markdown, and `stage-profile.json` | Enforced for recorded scalar configuration; no general realtime claim |
-| SigMF generator model/DSP/export behavior | Tooling owner | `pnpm test` and `pnpm run build` in `tools/sigmf-generator` | Enforced |
-| Redistributable package is license-approved | Release owner | `docs/release-policy.md`; library has `IsPackable=false` | Blocked by policy decision |
+| Managed-only NuGet excludes FFTW native assets | Release owner | local pack inspection; native assets have `Pack=false`; library has `IsPackable=false` | Guarded pending clean-environment consumer validation |
 | SIMD dispatch and optimized kernels | Performance owner | No accepted fixture yet | Deferred until explicit approval |
 | `Auto`, FoldAware prototype and selected-bin PFB | Architecture owner | No accepted benchmark/signal profile yet | Deliberately unsupported |
 
@@ -35,9 +35,10 @@ dotnet restore IqChannelizer.sln
 dotnet test IqChannelizer.sln -c Release --no-restore
 dotnet format IqChannelizer.sln --verify-no-changes --no-restore
 dotnet run --project benchmarks/IqChannelizer.Benchmarks -c Release --no-build -- --list flat
-pnpm --dir tools/sigmf-generator test
-pnpm --dir tools/sigmf-generator run build
 ```
+
+`tools/sigmf-generator` is a separately owned project and is intentionally outside
+the IqChannelizer acceptance, release, and Definition-of-Done scope.
 
 The exact passing test count and verified working-tree revision are recorded in
 [`implementation-steps.md`](../../implementation-steps.md) after each implementation

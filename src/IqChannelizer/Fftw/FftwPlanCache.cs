@@ -49,10 +49,13 @@ internal readonly record struct FftwPlanKey(
 
 internal static unsafe class FftwPlanCache
 {
+    internal const int MaximumIdlePlanCount = 32;
+
     private sealed class Entry
     {
         public required nint Plan { get; init; }
         public int LeaseCount { get; set; }
+        public long LastReleasedSequence { get; set; }
     }
 
     internal sealed class Lease : IDisposable
@@ -83,6 +86,7 @@ internal static unsafe class FftwPlanCache
     private static readonly object Gate = new();
     private static readonly Dictionary<FftwPlanKey, Entry> Plans = [];
     private static long _createdPlanCount;
+    private static long _releaseSequence;
 
     static FftwPlanCache() => AppDomain.CurrentDomain.ProcessExit += (_, _) => ClearIdle();
 
@@ -205,6 +209,23 @@ internal static unsafe class FftwPlanCache
             }
 
             entry.LeaseCount--;
+            if (entry.LeaseCount == 0)
+            {
+                entry.LastReleasedSequence = ++_releaseSequence;
+                TrimIdlePlans();
+            }
+        }
+    }
+
+    private static void TrimIdlePlans()
+    {
+        while (Plans.Values.Count(entry => entry.LeaseCount == 0) > MaximumIdlePlanCount)
+        {
+            var oldest = Plans
+                .Where(pair => pair.Value.LeaseCount == 0)
+                .MinBy(pair => pair.Value.LastReleasedSequence);
+            FftwNative.DestroyPlan(oldest.Value.Plan);
+            Plans.Remove(oldest.Key);
         }
     }
 }

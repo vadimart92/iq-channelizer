@@ -14,6 +14,11 @@ FFTW 3.3.5 64-bit Windows archive:
 The bundled DLL was verified byte-for-byte against the DLL in that official archive.
 It is copied beside build and publish outputs by `IqChannelizer.csproj`.
 
+FFTW 3.3.5 is an expected and intentional source-checkout dependency: it is the
+version of the official prebuilt Windows x64 archive used for reproducible local
+builds and tests. A newer source release does not by itself replace that pinned
+prebuilt artifact.
+
 Only a 64-bit Windows x64 process is supported by this distribution. Runtime startup
 validates OS, process architecture, required native exports, and the FFTW version
 symbol before allocating or planning. A missing, wrong-architecture, or incompatible
@@ -28,7 +33,8 @@ DLL produces an exception that names the expected file and deployment location.
   in-place mode, thread count, FFTW alignment class, and planning mode.
 - Cached native plans are shared through reference-counted leases. Each plan wrapper
   owns separate FFTW-allocated input/output buffers and executes through the FFTW
-  new-array API. Idle plans can be cleared explicitly and are cleared at process exit.
+  new-array API. At most 32 idle plans are retained using a least-recently-used
+  policy; idle plans can also be cleared explicitly and are cleared at process exit.
 - Both out-of-place and in-place contiguous C2C layouts are supported. Current engines
   use out-of-place transforms.
 - `fftwf_malloc` owns all native transform buffers. The wrapper requires at least
@@ -47,13 +53,19 @@ FFTW documents execution as the thread-safe part of its API. The channelizer's p
 engine contract nevertheless does not permit concurrent calls on the same engine;
 different plan wrappers use different input/output buffers.
 
-## License decision and release obligation
+## Package boundary and licenses
+
+IqChannelizer's managed source and future managed-only NuGet package are licensed
+under MIT. The native `libfftw3f-3.dll` and `fftw3.h` are explicitly marked
+`Pack=false` and will not be included in that NuGet package. A NuGet consumer is
+responsible for supplying a compatible native runtime through its own deployment.
 
 FFTW is offered under GNU GPL version 2 or later, with alternative commercial licensing
 available from MIT. The permissive notice at the top of `fftw3.h` explicitly applies
 only to that header and must not be treated as the DLL's license.
 
-Therefore a product that distributes this DLL must make an explicit release decision:
+The MIT license of IqChannelizer does not relicense FFTW. A product that separately
+distributes this DLL must still make an explicit release decision:
 
 1. distribute the combined work under GPL-compatible terms and satisfy the applicable
    GPL notice, license-copy, corresponding-source, and redistribution obligations; or

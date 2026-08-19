@@ -1,11 +1,11 @@
 # Definition-of-Done acceptance report
 
 This report audits section 14 of [`implementation-plan.md`](../../implementation-plan.md)
-against the scalar Conservative milestone at commit `23b05b0` plus the current Step 15
+against the scalar Conservative milestone at commit `c7a4477` plus the current hardening
 working tree. It records capability status; it is not a redistributable-release approval
 or a portable realtime claim.
 
-Verification date: **2026-08-19**. Release suite: **170 passed, 0 failed, 0 skipped**.
+Verification date: **2026-08-19**. Release suite: **175 passed, 0 failed, 0 skipped**.
 
 Status meanings:
 
@@ -23,6 +23,7 @@ Status meanings:
 | R=2 phase correction is explicit and proven | Enforced | `PfbMathTests`, `PfbAlgebraTests` |
 | At least one `H != K` and `H != K/2` configuration passes | Enforced | planner-selected `H=33` signal test in `PfbPlannerTests` |
 | PFB phase derives from the absolute stream and survives process boundaries | Enforced | `PfbAlgebraTests`, `PfbProductionFlowTests`, `StreamingFlowTests` |
+| Absolute oscillator phase remains stable at large stream indices | Enforced | long-origin cases in `StreamingFlowTests` and `PfbMathTests` |
 | Pre-FFT circular shift equals explicit post-FFT correction | Enforced | `PfbAlgebraTests` |
 | SIMD PFB FIR stores directly into rotated FFTW input | Deferred | Scalar direct-store path is enforced; SIMD requires explicit owner permission |
 | AVX2/FMA hot-kernel backend exists | Deferred | Step 13 permission gate |
@@ -45,7 +46,7 @@ Status meanings:
 | Both engines match the independent DDC | Enforced | FDC/PFB signal acceptance fixtures |
 | Benchmarks cover primitives, FFTW, FDC, PFB, and SIMD backends | Deferred | Scalar primitive/FFTW/FDC/PFB statistical baseline exists; SIMD backend is gated |
 | Target 100 MS/s profile has a recorded realtime result | Deferred | Current stored profile is configuration-specific and explicitly makes no 100 MS/s realtime claim |
-| FFTW licensing/distribution is documented | Enforced | `docs/fftw-runtime.md` and `docs/release-policy.md`; actual distribution remains blocked |
+| FFTW licensing/distribution is documented | Enforced | managed library is MIT; FFTW DLL is separately licensed and excluded from NuGet |
 | README has a minimal request/process/output example | Enforced | self-contained example in [`README.md`](../../README.md) |
 | Every `Auto` decision is backed by a stored profile | Guarded | `Auto` makes no decisions and throws until a versioned comparative profile exists |
 
@@ -58,7 +59,8 @@ full project Definition of Done is not complete. The remaining gates are:
 2. accepted comparative correctness/performance data before FoldAware or selected-bin work;
 3. a target 100 MS/s end-to-end profile before any realtime claim;
 4. a versioned strategy-comparison profile before enabling `Auto`; and
-5. a release-owner FFTW licensing/distribution decision before packaging.
+5. clean-environment validation that the inspected managed-only NuGet works with an
+   independently supplied compatible runtime.
 
 The detailed fixture map and reproducible commands are in
 [`manifest.md`](manifest.md). Stored scalar signal and performance summaries are under

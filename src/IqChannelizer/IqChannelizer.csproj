@@ -2,6 +2,7 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="IqChannelizer.Benchmarks" />
@@ -13,6 +14,8 @@
       <TargetPath>libfftw3f-3.dll</TargetPath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <Pack>false</Pack>
     </None>
+    <None Update="fftw3f\fftw3.h" Pack="false" />
   </ItemGroup>
 </Project>

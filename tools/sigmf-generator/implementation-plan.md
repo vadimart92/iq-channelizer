@@ -1,5 +1,9 @@
 # План реалізації браузерного SigMF Signal Generator
 
+> Цей генератор розвивається власником окремо. Його не слід розглядати в межах
+> IqChannelizer: він не є частиною scope, Definition of Done, acceptance або release
+> readiness основного проєкту.
+
 ## 1. Мета
 
 Створити в `tools/sigmf-generator` автономний браузерний застосунок, у якому користувач:

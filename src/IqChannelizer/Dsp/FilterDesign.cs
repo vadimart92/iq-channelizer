@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using IqChannelizer.Abstractions;
 
 namespace IqChannelizer.Dsp;
@@ -99,6 +98,7 @@ public static class KaiserLowPassDesigner
     private const double DesignMarginDb = 3;
     private const int ResponseEvaluationPoints = 4097;
     private const int MaximumTapCount = 1_000_001;
+    internal const int MaximumCachedFilterCount = 64;
 
     private readonly record struct NormalizedSpec(
         double PassbandEdge,
@@ -106,7 +106,22 @@ public static class KaiserLowPassDesigner
         double PassbandRippleDb,
         double StopbandAttenuationDb);
 
-    private static readonly ConcurrentDictionary<NormalizedSpec, DesignedLowPassFilter> Cache = new();
+    private sealed record CacheEntry(DesignedLowPassFilter Filter, LinkedListNode<NormalizedSpec> Node);
+
+    private static readonly object CacheGate = new();
+    private static readonly Dictionary<NormalizedSpec, CacheEntry> Cache = [];
+    private static readonly LinkedList<NormalizedSpec> CacheOrder = [];
+
+    internal static int CachedFilterCount
+    {
+        get
+        {
+            lock (CacheGate)
+            {
+                return Cache.Count;
+            }
+        }
+    }
 
     public static DesignedLowPassFilter Design(LowPassFilterSpec specification)
     {
@@ -116,7 +131,46 @@ public static class KaiserLowPassDesigner
             specification.StopbandEdgeHz / specification.InputSampleRateHz,
             specification.PassbandRippleDb,
             specification.StopbandAttenuationDb);
-        return Cache.GetOrAdd(normalized, static key => DesignCore(key));
+        lock (CacheGate)
+        {
+            if (Cache.TryGetValue(normalized, out var cached))
+            {
+                CacheOrder.Remove(cached.Node);
+                CacheOrder.AddFirst(cached.Node);
+                return cached.Filter;
+            }
+        }
+
+        var designed = DesignCore(normalized);
+        lock (CacheGate)
+        {
+            if (Cache.TryGetValue(normalized, out var cached))
+            {
+                CacheOrder.Remove(cached.Node);
+                CacheOrder.AddFirst(cached.Node);
+                return cached.Filter;
+            }
+
+            var node = CacheOrder.AddFirst(normalized);
+            Cache.Add(normalized, new CacheEntry(designed, node));
+            if (Cache.Count > MaximumCachedFilterCount)
+            {
+                var oldest = CacheOrder.Last!;
+                CacheOrder.RemoveLast();
+                Cache.Remove(oldest.Value);
+            }
+
+            return designed;
+        }
+    }
+
+    internal static void ClearCache()
+    {
+        lock (CacheGate)
+        {
+            Cache.Clear();
+            CacheOrder.Clear();
+        }
     }
 
     private static DesignedLowPassFilter DesignCore(NormalizedSpec specification)

@@ -9,6 +9,8 @@ public sealed class PfbMathTests
     [TestCase(3L)]
     [TestCase(17L)]
     [TestCase(-5L)]
+    [TestCase(10_000_000_000_003L)]
+    [TestCase(-10_000_000_000_005L)]
     public void CircularShiftMatchesExplicitFrameCorrection(long anchor)
     {
         ComplexF[] input = [new(1, 2), new(-3, 1), new(0.5f, -2), new(4, 0)];

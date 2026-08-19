@@ -4,9 +4,9 @@ Streaming complex-IQ channelization with interchangeable FDC and generalized PFB
 
 The current milestone provides the public request/plan/streaming contracts, deterministic planning, a multi-decimation FFTW overlap-save FDC with one shared forward FFT, grouped short inverse transforms and validated Kaiser anti-alias filters, plus a generalized batched `K/H` PFB with a Conservative `P > 1` Kaiser prototype, absolute frame correction, unique-bin fan-out and per-channel power-of-two fine decimation. The PFB planner enumerates feasible `K/H/FramesPerBatch` shapes, validates exact filters, and can select non-2× oversampling. Scalar reference transforms, conservative response/folding validation, and BenchmarkDotNet entry points are included. SIMD, `Auto`, FoldAware/selected-bin variants, and realtime claims are intentionally not included yet.
 
-The Windows x64 FFTW binary is copied beside consuming applications automatically. FFTW plans and aligned native buffers are created once with the engine and disposed with it; no planning occurs in `Process`.
+For source-checkout builds and tests, the pinned Windows x64 FFTW binary is copied beside the managed assembly automatically. It is intentionally excluded from the future NuGet package: NuGet consumers must supply a compatible native FFTW runtime themselves. FFTW plans and aligned native buffers are created once with the engine and disposed with it; no planning occurs in `Process`.
 
-Runtime support, cache/wisdom policy, exact binary provenance, and licensing obligations are documented in [docs/fftw-runtime.md](docs/fftw-runtime.md). Redistributable packaging remains disabled until the release decision in [docs/release-policy.md](docs/release-policy.md) is approved.
+IqChannelizer is licensed under the [MIT License](LICENSE). Runtime support, bounded cache/wisdom policy, exact FFTW binary provenance, and the separate FFTW licensing obligations are documented in [docs/fftw-runtime.md](docs/fftw-runtime.md). Packaging remains disabled until the managed-only NuGet layout in [docs/release-policy.md](docs/release-policy.md) is implemented and verified.
 
 ```csharp
 using System;

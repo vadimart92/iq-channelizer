@@ -4,6 +4,33 @@ namespace IqChannelizer.Tests;
 
 public sealed class FilterDesignTests
 {
+    [Test]
+    [NonParallelizable]
+    public void KaiserDesignCacheHasABoundedLeastRecentlyUsedPolicy()
+    {
+        KaiserLowPassDesigner.ClearCache();
+        try
+        {
+            for (var index = 0; index <= KaiserLowPassDesigner.MaximumCachedFilterCount; index++)
+            {
+                _ = KaiserLowPassDesigner.Design(new LowPassFilterSpec(
+                    1,
+                    0.05 + (index * 0.0001),
+                    0.4,
+                    0.5,
+                    30));
+            }
+
+            Assert.That(
+                KaiserLowPassDesigner.CachedFilterCount,
+                Is.EqualTo(KaiserLowPassDesigner.MaximumCachedFilterCount));
+        }
+        finally
+        {
+            KaiserLowPassDesigner.ClearCache();
+        }
+    }
+
     [TestCase(0, 1_000, 2_000, 0.1, 60)]
     [TestCase(48_000, 0, 2_000, 0.1, 60)]
     [TestCase(48_000, 3_000, 2_000, 0.1, 60)]
