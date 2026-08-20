@@ -1,5 +1,6 @@
 export interface ByteSink {
   write(chunk: Uint8Array): Promise<void>;
+  rewriteStart(chunk: Uint8Array): Promise<void>;
   close(): Promise<void>;
   abort(reason?: unknown): Promise<void>;
 }
@@ -46,6 +47,8 @@ export function createTarHeader(name: string, size: number): Uint8Array {
 export class TarWriter {
   readonly #sink: ByteSink;
   #remaining = 0;
+  #declaredSize = 0;
+  #openName = "";
   #open = false;
   #finished = false;
 
@@ -57,6 +60,8 @@ export class TarWriter {
     if (this.#finished || this.#open) throw new Error("Tar writer is not ready for a new file.");
     await this.#sink.write(createTarHeader(name, size));
     this.#remaining = size;
+    this.#declaredSize = size;
+    this.#openName = name;
     this.#open = true;
   }
 
@@ -72,6 +77,15 @@ export class TarWriter {
     if (padding > 0) await this.#sink.write(new Uint8Array(padding));
     this.#open = false;
     this.#remainingFileSize = 0;
+  }
+
+  async endFileEarly(actualSize: number): Promise<void> {
+    const written = this.#declaredSize - this.#remaining;
+    if (!this.#open || actualSize !== written) throw new Error("Tar partial file size does not match the written payload.");
+    await this.#sink.rewriteStart(createTarHeader(this.#openName, actualSize));
+    this.#remaining = 0;
+    this.#remainingFileSize = actualSize;
+    await this.endFile();
   }
 
   #remainingFileSize = 0;

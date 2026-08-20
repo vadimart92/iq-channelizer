@@ -12,6 +12,12 @@ class MemorySink implements ByteSink {
   closed = false;
 
   async write(chunk: Uint8Array): Promise<void> { this.chunks.push(chunk.slice()); }
+  async rewriteStart(chunk: Uint8Array): Promise<void> {
+    const bytes = this.bytes();
+    bytes.set(chunk);
+    this.chunks.length = 0;
+    this.chunks.push(bytes);
+  }
   async close(): Promise<void> { this.closed = true; }
   async abort(): Promise<void> { this.chunks.length = 0; }
 
@@ -79,6 +85,21 @@ describe("ustar writer", () => {
     expect(field(archive, 0, 100)).toBe("recording.sigmf-data");
     expect(field(archive, 1024, 100)).toBe("recording.sigmf-meta");
     expect(archive.slice(-1024).every((byte) => byte === 0)).toBe(true);
+  });
+
+  it("finalizes a valid archive when a streaming file is stopped early", async () => {
+    const sink = new MemorySink();
+    const writer = new TarWriter(sink);
+    const partialData = new Uint8Array(24).fill(0x5a);
+    await writer.startStreamingFile("recording.sigmf-data", 80);
+    await writer.write(partialData);
+    await writer.endFileEarly(partialData.length);
+    await writer.writeFile("recording.sigmf-meta", new TextEncoder().encode("{}\n"));
+    await writer.finish();
+
+    const archive = sink.bytes();
+    expect(Number.parseInt(field(archive, 124, 12), 8)).toBe(partialData.length);
+    expect(field(archive, 1024, 100)).toBe("recording.sigmf-meta");
   });
 
   it("is accepted by the system tar reader", async () => {

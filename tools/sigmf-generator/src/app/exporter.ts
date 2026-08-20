@@ -1,4 +1,4 @@
-import { totalDataBytes, type SignalProject } from "../model/project";
+import { totalDataBytes, type SignalBlock, type SignalProject } from "../model/project";
 import { TarWriter, type ByteSink } from "../sigmf/archive";
 import { BlobSink, FileSystemSink, canStreamToFile } from "../sigmf/byte-sink";
 import { encodeMetadata } from "../sigmf/metadata";
@@ -10,13 +10,19 @@ export interface ExportCallbacks {
 }
 
 export interface ExportSession {
-  result: Promise<number>;
+  result: Promise<ExportResult>;
   cancel(): void;
+}
+
+export interface ExportResult {
+  masterGain: number;
+  completedSamples: number;
+  cancelled: boolean;
 }
 
 interface GenerationTarget {
   write(chunk: Uint8Array): Promise<void>;
-  finish(): Promise<void>;
+  finish(completedSamples: number): Promise<void>;
   abort(reason?: unknown): Promise<void>;
 }
 
@@ -37,10 +43,10 @@ async function chooseSink(
 }
 
 async function createSigMfTarget(project: SignalProject): Promise<GenerationTarget> {
-  const metadata = encodeMetadata(project);
+  const metadataEstimate = encodeMetadata(project);
   const sink = await chooseSink(
     `${project.basename}.sigmf`,
-    archiveEstimate(project, metadata.byteLength),
+    archiveEstimate(project, metadataEstimate.byteLength),
     "SigMF Archive",
     "application/x-tar",
     ".sigmf",
@@ -49,8 +55,11 @@ async function createSigMfTarget(project: SignalProject): Promise<GenerationTarg
   await writer.startStreamingFile(`${project.basename}.sigmf-data`, totalDataBytes(project));
   return {
     write: (chunk) => writer.write(chunk),
-    async finish(): Promise<void> {
-      await writer.endFile();
+    async finish(completedSamples): Promise<void> {
+      const completedProject = truncateProject(project, completedSamples);
+      const metadata = encodeMetadata(completedProject);
+      if (completedSamples === project.totalSamples) await writer.endFile();
+      else await writer.endFileEarly(totalDataBytes(completedProject));
       await writer.writeFile(`${project.basename}.sigmf-meta`, metadata);
       await writer.finish();
     },
@@ -70,9 +79,23 @@ async function createWavTarget(project: SignalProject): Promise<GenerationTarget
   await sink.write(header);
   return {
     write: (chunk) => sink.write(chunk),
-    finish: () => sink.close(),
+    async finish(completedSamples): Promise<void> {
+      if (completedSamples !== project.totalSamples) {
+        await sink.rewriteStart(createWavHeader(truncateProject(project, completedSamples)));
+      }
+      await sink.close();
+    },
     abort: (reason) => sink.abort(reason),
   };
+}
+
+function truncateProject(project: SignalProject, completedSamples: number): SignalProject {
+  const signals = project.signals.flatMap((signal): SignalBlock[] => {
+    if (signal.startSample >= completedSamples) return [];
+    const sampleCount = Math.min(signal.sampleCount, completedSamples - signal.startSample);
+    return [{ ...signal, sampleCount, fadeSamples: Math.min(signal.fadeSamples, Math.floor(sampleCount / 2)) }];
+  });
+  return { ...project, totalSamples: completedSamples, signals };
 }
 
 function exportGenerated(
@@ -84,15 +107,16 @@ function exportGenerated(
   let target: GenerationTarget | undefined;
   let cancelled = false;
 
-  const operation = (async (): Promise<number> => {
+  const operation = (async (): Promise<ExportResult> => {
     target = await targetFactory(project);
     if (cancelled) {
       await target.abort(new DOMException("Export cancelled", "AbortError"));
       throw new DOMException("Export cancelled", "AbortError");
     }
-    return new Promise<number>((resolve, reject) => {
+    return new Promise<ExportResult>((resolve, reject) => {
       let writeChain = Promise.resolve();
       let settled = false;
+      let writtenSamples = 0;
       const fail = (error: unknown): void => {
         if (settled) return;
         settled = true;
@@ -105,6 +129,7 @@ function exportGenerated(
         if (message.type === "chunk") {
           writeChain = writeChain.then(async () => {
             await target?.write(new Uint8Array(message.bytes));
+            writtenSamples += message.sampleCount;
             const acknowledgement: WorkerRequest = { type: "ack" };
             worker.postMessage(acknowledgement);
           }).catch(fail);
@@ -113,12 +138,17 @@ function exportGenerated(
         } else if (message.type === "done") {
           void writeChain.then(async () => {
             if (!target) throw new Error("Export target is unavailable.");
-            await target.finish();
+            await target.finish(writtenSamples);
             settled = true;
-            resolve(message.masterGain);
+            resolve({ masterGain: message.masterGain, completedSamples: writtenSamples, cancelled: false });
           }).catch(fail);
         } else if (message.type === "cancelled") {
-          fail(new DOMException("Export cancelled", "AbortError"));
+          void writeChain.then(async () => {
+            if (!target) throw new Error("Export target is unavailable.");
+            await target.finish(writtenSamples);
+            settled = true;
+            resolve({ masterGain: message.masterGain ?? 1, completedSamples: writtenSamples, cancelled: true });
+          }).catch(fail);
         } else if (message.type === "error") {
           fail(new Error(message.message));
         }

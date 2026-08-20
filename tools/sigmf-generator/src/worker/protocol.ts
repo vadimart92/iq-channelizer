@@ -12,5 +12,5 @@ export type WorkerResponse =
   | { type: "progress"; completed: number; total: number; masterGain: number }
   | { type: "done"; masterGain: number }
   | { type: "preview"; width: number; height: number; power: ArrayBuffer; region: PreviewRegion }
-  | { type: "cancelled" }
+  | { type: "cancelled"; masterGain?: number }
   | { type: "error"; message: string };

@@ -18,7 +18,7 @@ async function generate(request: Extract<WorkerRequest, { type: "generate" }>): 
   const gain = computeMasterGain(request.project);
   for (let firstSample = 0; firstSample < request.project.totalSamples; firstSample += chunkSamples) {
     if (cancelled) {
-      send({ type: "cancelled" });
+      send({ type: "cancelled", masterGain: gain });
       return;
     }
     const count = Math.min(chunkSamples, request.project.totalSamples - firstSample);
@@ -31,7 +31,7 @@ async function generate(request: Extract<WorkerRequest, { type: "generate" }>): 
     });
     acknowledge = undefined;
     if (cancelled) {
-      send({ type: "cancelled" });
+      send({ type: "cancelled", masterGain: gain });
       return;
     }
     send({ type: "progress", completed: firstSample + count, total: request.project.totalSamples, masterGain: gain });

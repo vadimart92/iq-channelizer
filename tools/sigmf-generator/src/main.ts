@@ -398,10 +398,18 @@ async function startExport(format: ExportFormat): Promise<void> {
     : exportRecording(cloneProject(project), callbacks);
   exportSession = session;
   try {
-    const gain = await session.result;
-    setStatus("Export complete", `${project.basename}.${extension} · master gain ${gain.toFixed(6)}`);
+    const result = await session.result;
+    if (result.cancelled) {
+      setStatus(
+        "Export stopped — partial file saved",
+        `${project.basename}.${extension} · ${result.completedSamples.toLocaleString()} samples · master gain ${result.masterGain.toFixed(6)}`,
+        "warning",
+      );
+    } else {
+      setStatus("Export complete", `${project.basename}.${extension} · master gain ${result.masterGain.toFixed(6)}`);
+    }
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") setStatus("Export cancelled", "No completed file was written.", "warning");
+    if (error instanceof DOMException && error.name === "AbortError") setStatus("Export cancelled", "Generation had not started, so there was nothing to save.", "warning");
     else setStatus("Export failed", error instanceof Error ? error.message : String(error), "error");
   } finally {
     exporting = false;
