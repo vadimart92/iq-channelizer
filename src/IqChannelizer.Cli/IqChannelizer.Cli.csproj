@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>iqchannelizer-cli</AssemblyName>
+    <RootNamespace>IqChannelizer.Cli</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.11" />
+    <ProjectReference Include="../IqChannelizer/IqChannelizer.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="IqChannelizer.Cli.Tests" />
+  </ItemGroup>
+</Project>

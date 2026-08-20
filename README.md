@@ -46,6 +46,38 @@ sealed class CountingSink : IChannelOutputSink
 }
 ```
 
+## Command-line application
+
+The `IqChannelizer.Cli` project channelizes a SigMF or stereo I/Q WAV recording and writes
+one complex baseband recording per requested channel. It uses `System.CommandLine`; repeat
+`--channel` or place several channel values after one occurrence:
+
+```powershell
+dotnet run --project src/IqChannelizer.Cli -- `
+  --input recording.sigmf `
+  --output channels `
+  --strategy fdc `
+  --channel 1:125000:20000:10000 `
+  --channel 2:-175000:12000:6000
+```
+
+The channel syntax is
+`ID:CENTER:PASSBAND:TRANSITION[:STOPBAND[:RIPPLE[:MIN_RATE[:PREFERRED_RATE]]]]`,
+with frequencies and rates in Hz and attenuation/ripple in dB. Numeric values use invariant
+culture (a dot as the decimal separator). Run with `--help` to see the strategy, SIMD, block,
+and output options.
+
+The completion summary reports aggregate average and per-block minimum/maximum DSP throughput
+relative to the input sample rate (`1.00x` is realtime), together with the average absolute
+throughput. The timing covers `IStreamingChannelizer.Process` only, excluding input and output
+file I/O; a padded final block is counted at the full DSP block size.
+
+Input may be a SigMF pair (`.sigmf-meta` plus `.sigmf-data`), a `.sigmf` tar archive, or a
+two-channel WAV whose left/right samples are I/Q. Common complex integer and floating-point
+SigMF datatypes and PCM/IEEE-float WAV encodings are converted to `ComplexF`. Output defaults
+to a `cf32_le` SigMF pair per channel; `--output-format wav` writes stereo float32 I/Q WAV when
+the resolved output rate is an integer. Existing output files are never overwritten.
+
 The caller owns the ring buffer and supplies exactly `[HistorySize | ChunkSize]`. Each `Process` call writes exactly one deterministic block per requested channel in request order.
 
 Without a forced `FdcDecimationFactor`, the FDC planner selects a power-of-two decimation per channel from its occupied bandwidth and minimum/preferred output rates, aligns shared history/chunk requirements to the largest selected factor, and groups channels with equal short-IFFT lengths. A forced factor remains a global deterministic override and is validated for every channel.
